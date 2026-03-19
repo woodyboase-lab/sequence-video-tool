@@ -220,7 +220,7 @@ def upload_audio():
         ext = Path(f.filename).suffix.lower()
         if ext not in AUDIO_EXTS:
             continue
-        save_path = audio_dir / f.filename
+        save_path = audio_dir / Path(f.filename).name
         f.save(str(save_path))
         saved.append(f.filename)
 
