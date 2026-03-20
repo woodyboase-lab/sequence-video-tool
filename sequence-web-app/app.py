@@ -220,7 +220,7 @@ def upload_audio():
         ext = Path(f.filename).suffix.lower()
         if ext not in AUDIO_EXTS:
             continue
-        save_path = audio_dir / Path(f.filename).name
+        save_path = audio_dir / f.filename
         f.save(str(save_path))
         saved.append(f.filename)
 
@@ -311,14 +311,47 @@ def stop():
 # ------------------------------------------------------------
 # Render
 # ------------------------------------------------------------
-def ensure_1080p_visual(visual_path: Path, sess_dir: Path) -> Path:
-    out = sess_dir / f"{visual_path.stem}_1080p{visual_path.suffix}"
-    if out.exists(): return out
-    cmd = [FFMPEG, "-y", "-i", str(visual_path),
-           "-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black",
-           "-an", str(out)]
-    subprocess.run(cmd, capture_output=True)
-    return out
+# Resolution targets: (label, widescreen_size, square_size, portrait_long_side)
+RESOLUTIONS = {
+    "4k":    (3840, 2160, 4000),
+    "2k":    (2560, 1440, 2000),
+    "1080p": (1920, 1080, 1080),
+    "720p":  (1280,  720,  720),
+    "480p":  ( 854,  480,  480),
+}
+
+def build_scale_filter(w: int, h: int, res_key: str) -> str:
+    """
+    Build an ffmpeg scale filter that:
+    - Preserves the original aspect ratio exactly
+    - Scales so the output fits within the chosen resolution
+    - Works for any shape: landscape, square, portrait, or unusual
+    - Ensures width and height are divisible by 2 (required by libx264)
+    """
+    res = RESOLUTIONS.get(res_key, RESOLUTIONS["1080p"])
+    wide_w, wide_h, square_side = res
+
+    # Determine the bounding box based on aspect ratio
+    is_square = (w == h)
+    is_portrait = (h > w)
+
+    if is_square:
+        target_w = target_h = square_side
+    elif is_portrait:
+        # Portrait: fit within wide_h x wide_w (rotated bounding box)
+        target_w = wide_h
+        target_h = wide_w
+    else:
+        # Landscape / 16:9
+        target_w = wide_w
+        target_h = wide_h
+
+    # Scale to fit within target, preserve ratio, round to even numbers
+    return (
+        f"scale=w='if(gt(iw/ih,{target_w}/{target_h}),{target_w},-2)'"
+        f":h='if(gt(iw/ih,{target_w}/{target_h}),-2,{target_h})'"
+        f",scale=trunc(iw/2)*2:trunc(ih/2)*2"
+    )
 
 @app.route("/render", methods=["POST"])
 def render():
@@ -409,9 +442,12 @@ def render():
     fade = bool(data.get("fade", False))
     seg_len = _safe_float(data.get("segment_length_sec"), 0.0)
     seg_start = _safe_float(data.get("segment_start_sec"), 0.0)
+    res_key = (data.get("resolution") or "1080p").strip().lower()
+    if res_key not in RESOLUTIONS:
+        res_key = "1080p"
 
-    if visual_is_169:
-        visual_path = ensure_1080p_visual(visual_path, sess_dir)
+    # Build scale filter for this image + chosen resolution
+    scale_filter = build_scale_filter(w, h, res_key)
 
     separate_169 = (visual_is_169 and sixteen_nine_mode == "separate")
     if (not visual_is_169) or separate_169:
@@ -442,6 +478,7 @@ def render():
             if seg_len > 0: cmd += ["-t", str(seg_len)]
 
         cmd += ["-i", str(audio), "-map", "0:v:0", "-map", "1:a:0"]
+        cmd += ["-vf", scale_filter]
 
         if fade:
             dur = seg_len if (use_segment and seg_len > 0) else audio_duration(audio)
@@ -455,8 +492,6 @@ def render():
             "-crf", "22",
             "-r", "24",
             "-pix_fmt", "yuv420p",
-            "-profile:v", "high",
-            "-level", "4.0",
             "-c:a", "aac",
             "-b:a", "320k",
             "-movflags", "+faststart",
