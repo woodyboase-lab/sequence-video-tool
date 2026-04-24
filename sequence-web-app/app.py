@@ -35,6 +35,21 @@ STOP_EVENT = threading.Event()
 CURRENT_PROC_LOCK = threading.Lock()
 CURRENT_PROC: Optional[subprocess.Popen] = None
 RENDER_SESSIONS: Dict[str, Dict] = {}  # session_id -> {status, files, ...}
+# Job tracking uses files on disk so all gunicorn workers can read/write
+JOBS_DIR = Path(tempfile.gettempdir()) / "sequence_jobs"
+JOBS_DIR.mkdir(parents=True, exist_ok=True)
+
+def _job_path(job_id: str) -> Path:
+    return JOBS_DIR / f"{job_id}.json"
+
+def _read_job(job_id: str) -> Optional[Dict]:
+    p = _job_path(job_id)
+    if not p.exists(): return None
+    try: return json.loads(p.read_text())
+    except: return None
+
+def _write_job(job_id: str, job: Dict) -> None:
+    _job_path(job_id).write_text(json.dumps(job))
 
 def set_current_proc(p: Optional[subprocess.Popen]) -> None:
     global CURRENT_PROC
@@ -220,7 +235,9 @@ def upload_audio():
         ext = Path(f.filename).suffix.lower()
         if ext not in AUDIO_EXTS:
             continue
-        save_path = audio_dir / f.filename
+        bare_name = Path(f.filename).name
+        audio_dir.mkdir(parents=True, exist_ok=True)
+        save_path = audio_dir / bare_name
         f.save(str(save_path))
         saved.append(f.filename)
 
@@ -311,227 +328,276 @@ def stop():
 # ------------------------------------------------------------
 # Render
 # ------------------------------------------------------------
-# Resolution targets: (label, widescreen_size, square_size, portrait_long_side)
+# Resolution targets: (landscape_w, landscape_h, square_side)
 RESOLUTIONS = {
     "4k":    (3840, 2160, 4000),
     "2k":    (2560, 1440, 2000),
     "1080p": (1920, 1080, 1080),
     "720p":  (1280,  720,  720),
     "480p":  ( 854,  480,  480),
+    "original": None,  # no scaling
 }
 
 def build_scale_filter(w: int, h: int, res_key: str) -> str:
     """
     Build an ffmpeg scale filter that:
     - Preserves the original aspect ratio exactly
-    - Scales so the output fits within the chosen resolution
+    - Scales DOWN to fit within the chosen resolution (never upscales)
     - Works for any shape: landscape, square, portrait, or unusual
     - Ensures width and height are divisible by 2 (required by libx264)
     """
     res = RESOLUTIONS.get(res_key, RESOLUTIONS["1080p"])
     wide_w, wide_h, square_side = res
 
-    # Determine the bounding box based on aspect ratio
     is_square = (w == h)
     is_portrait = (h > w)
 
     if is_square:
-        target_w = target_h = square_side
+        target = square_side
+        # Never upscale — if image is already smaller, keep original size
+        target = min(target, w)
+        # Round down to even
+        target = target - (target % 2)
+        return f"scale={target}:{target}"
     elif is_portrait:
-        # Portrait: fit within wide_h x wide_w (rotated bounding box)
-        target_w = wide_h
-        target_h = wide_w
+        # Portrait: longest edge is height
+        target_h = min(wide_w, h)  # never upscale
+        target_h = target_h - (target_h % 2)
+        return f"scale=-2:{target_h}"
     else:
-        # Landscape / 16:9
-        target_w = wide_w
-        target_h = wide_h
+        # Landscape
+        target_w = min(wide_w, w)  # never upscale
+        target_w = target_w - (target_w % 2)
+        return f"scale={target_w}:-2"
 
-    # Scale to fit within target, preserve ratio, round to even numbers
-    return (
-        f"scale=w='if(gt(iw/ih,{target_w}/{target_h}),{target_w},-2)'"
-        f":h='if(gt(iw/ih,{target_w}/{target_h}),-2,{target_h})'"
-        f",scale=trunc(iw/2)*2:trunc(ih/2)*2"
-    )
-
-@app.route("/render", methods=["POST"])
-def render():
-    STOP_EVENT.clear()
-    data = request.get_json(force=True) or {}
+def _run_render_job(job_id: str, data: dict) -> None:
+    job = _read_job(job_id)
     session_id = data.get("session_id", "")
     audio_only = bool(data.get("audio_only", False))
     export_mp3 = bool(data.get("export_mp3", False))
-
     sess_dir = get_session_dir(session_id)
     audio_dir = sess_dir / "audio"
     render_out = RENDER_DIR / session_id
     render_out.mkdir(parents=True, exist_ok=True)
 
-    audio_files = sorted([
-        f for f in audio_dir.iterdir()
-        if f.is_file() and f.suffix.lower() in AUDIO_EXTS
-    ]) if audio_dir.exists() else []
+    try:
+        audio_files = sorted([
+            f for f in audio_dir.iterdir()
+            if f.is_file() and f.suffix.lower() in AUDIO_EXTS
+        ]) if audio_dir.exists() else []
 
-    if not audio_files:
-        return Response("No audio files found.", status=400)
+        if not audio_files:
+            job["status"] = "error"; job["error"] = "No audio files found."; return
+            _write_job(job_id, job)
 
-    # ---- AUDIO ONLY MODE ----
-    if audio_only:
-        clips = data.get("clips") or []
-        clips_dir = render_out / "CLIPS"
-        clips_dir.mkdir(exist_ok=True)
+        # ---- AUDIO ONLY ----
+        if audio_only:
+            clips = data.get("clips") or []
+            clips_dir = render_out / "CLIPS"
+            clips_dir.mkdir(exist_ok=True)
+            job["total"] = len(clips)
+            _write_job(job_id, job)
+            created = 0
+            for idx, clip in enumerate(clips, start=1):
+                if STOP_EVENT.is_set(): break
+                name = (clip.get("selected_audio") or "").strip()
+                match = [a for a in audio_files if a.name == name]
+                if not match: continue
+                audio = match[0]
+                seg_len = _safe_float(clip.get("segment_length_sec"), 30.0)
+                seg_start = _safe_float(clip.get("segment_start_sec"), 0.0)
+                fade = bool(clip.get("fade", False))
+                out_ext = ".mp3" if export_mp3 else ".wav"
+                out_path = _next_available(clips_dir / f"{audio.stem}_clip_{idx}{out_ext}")
+                job["videos"].append({"name": audio.name, "status": "rendering", "url": None})
+                _write_job(job_id, job)
+                v_idx = len(job["videos"]) - 1
+                _write_job(job_id, job)
+                cmd = [FFMPEG, "-y", "-ss", str(seg_start), "-t", str(seg_len), "-i", str(audio)]
+                afilters = []
+                if fade:
+                    f_in = _safe_float(clip.get("fade_in"), 0.0)
+                    f_out = _safe_float(clip.get("fade_out"), 0.0)
+                    afilters += [f"afade=t=in:st=0:d={f_in}:curve=tri",
+                                 f"afade=t=out:st={max(seg_len-f_out,0.0)}:d={f_out}:curve=tri"]
+                if afilters: cmd += ["-af", ",".join(afilters)]
+                if export_mp3: cmd += ["-c:a", "libmp3lame", "-b:a", "320k", str(out_path)]
+                else: cmd += ["-c:a", "pcm_s16le", str(out_path)]
+                p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                set_current_proc(p); p.communicate(); set_current_proc(None)
+                if p.returncode == 0:
+                    created += 1
+                    job["videos"][v_idx]["status"] = "done"
+                    _write_job(job_id, job)
+                    job["videos"][v_idx]["url"] = f"/download/{session_id}/CLIPS/{out_path.name}"
+                    _write_job(job_id, job)
+                else:
+                    job["videos"][v_idx]["status"] = "error"
+                    _write_job(job_id, job)
+                job["done"] = created
+                _write_job(job_id, job)
+            if created > 0:
+                zip_path = render_out / "clips.zip"
+                shutil.make_archive(str(zip_path.with_suffix("")), "zip", str(clips_dir))
+                job["status"] = "done"
+                _write_job(job_id, job)
+                job["zip_url"] = f"/download/{session_id}/clips.zip"
+                _write_job(job_id, job)
+                job["message"] = f"Created {created} clip(s)."
+                _write_job(job_id, job)
+            else:
+                job["status"] = "error"; job["error"] = "No clips were created."
+                _write_job(job_id, job)
+            return
+
+        # ---- VIDEO MODE ----
+        visuals = [f for f in sess_dir.iterdir()
+                   if f.name.startswith("visual_") and f.suffix.lower() in VISUAL_EXTS]
+        if not visuals:
+            job["status"] = "error"; job["error"] = "No visual found."; return
+            _write_job(job_id, job)
+
+        visual_path = visuals[0]
+        ext = visual_path.suffix.lower()
+        if ext in {".jpg", ".jpeg", ".png"}:
+            with Image.open(visual_path) as img:
+                w, h = img.size
+        else:
+            w, h = ffprobe_wh(visual_path)
+
+        visual_is_169 = is_16_9(w, h)
+        selected_audio_name = (data.get("selected_audio") or "").strip()
+        sixteen_nine_mode = (data.get("sixteen_nine_mode") or "all").strip().lower()
+        mode = (data.get("mode") or "full").strip().lower()
+        use_segment = (mode == "segment")
+        fade = bool(data.get("fade", False))
+        seg_len = _safe_float(data.get("segment_length_sec"), 0.0)
+        seg_start = _safe_float(data.get("segment_start_sec"), 0.0)
+        res_key = (data.get("resolution") or "1080p").strip().lower()
+        if res_key not in RESOLUTIONS: res_key = "1080p"
+
+        # For 16:9 classic mode — pre-scale to 1080p ONCE, then reuse for all renders
+        # This is much faster than applying the scale filter per-frame during encoding
+        if visual_is_169 and sixteen_nine_mode == "all":
+            scaled_path = sess_dir / f"{visual_path.stem}_1080p{visual_path.suffix}"
+            if not scaled_path.exists():
+                job["message"] = "Pre-scaling image to 1080p..."
+                _write_job(job_id, job)
+                scale_cmd = [
+                    FFMPEG, "-y", "-i", str(visual_path),
+                    "-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black",
+                    "-an", str(scaled_path)
+                ]
+                subprocess.run(scale_cmd, capture_output=True)
+            visual_path = scaled_path
+            scale_filter = None  # already scaled, no filter needed
+        elif res_key == "original":
+            scale_filter = "scale=trunc(iw/2)*2:trunc(ih/2)*2"
+        else:
+            scale_filter = build_scale_filter(w, h, res_key)
+
+        separate_169 = (visual_is_169 and sixteen_nine_mode == "separate")
+        if (not visual_is_169) or separate_169:
+            match = [a for a in audio_files if a.name == selected_audio_name]
+            if not match:
+                job["status"] = "error"; job["error"] = "Please choose a valid audio file."; return
+                _write_job(job_id, job)
+            render_audio_files = match
+        else:
+            render_audio_files = audio_files
+            use_segment = False
+            fade = False
+
+        job["total"] = len(render_audio_files)
+        _write_job(job_id, job)
         created = 0
-        tmp_paths = []
 
-        for idx, clip in enumerate(clips, start=1):
+        for audio in render_audio_files:
             if STOP_EVENT.is_set(): break
-            name = (clip.get("selected_audio") or "").strip()
-            match = [a for a in audio_files if a.name == name]
-            if not match: continue
-            audio = match[0]
-            seg_len = _safe_float(clip.get("segment_length_sec"), 30.0)
-            seg_start = _safe_float(clip.get("segment_start_sec"), 0.0)
-            fade = bool(clip.get("fade", False))
-            out_ext = ".mp3" if export_mp3 else ".wav"
-            out_path = _next_available(clips_dir / f"{audio.stem}_clip_{idx}{out_ext}")
+            output_video = render_out / f"{audio.stem}.mp4"
+            job["videos"].append({"name": audio.stem + ".mp4", "status": "rendering", "url": None})
+            _write_job(job_id, job)
+            v_idx = len(job["videos"]) - 1
+            _write_job(job_id, job)
 
-            cmd = [FFMPEG, "-y", "-ss", str(seg_start), "-t", str(seg_len), "-i", str(audio)]
-            afilters = []
+            if visual_path.suffix.lower() in [".jpg", ".jpeg", ".png"]:
+                input_v = ["-loop", "1", "-i", str(visual_path)]
+            else:
+                input_v = ["-stream_loop", "-1", "-i", str(visual_path)]
+
+            cmd = [FFMPEG, "-y", *input_v]
+            if use_segment:
+                cmd += ["-ss", str(max(seg_start, 0.0))]
+                if seg_len > 0: cmd += ["-t", str(seg_len)]
+            cmd += ["-i", str(audio), "-map", "0:v:0", "-map", "1:a:0"]
+            if scale_filter:
+                cmd += ["-vf", scale_filter]
             if fade:
-                f_in = _safe_float(clip.get("fade_in"), 0.0)
-                f_out = _safe_float(clip.get("fade_out"), 0.0)
-                afilters += [f"afade=t=in:st=0:d={f_in}:curve=tri",
-                             f"afade=t=out:st={max(seg_len-f_out,0.0)}:d={f_out}:curve=tri"]
-            if afilters: cmd += ["-af", ",".join(afilters)]
-            if export_mp3: cmd += ["-c:a", "libmp3lame", "-b:a", "320k", str(out_path)]
-            else: cmd += ["-c:a", "pcm_s16le", str(out_path)]
+                dur = seg_len if (use_segment and seg_len > 0) else audio_duration(audio)
+                f_in = _safe_float(data.get("fade_in"), 0.0)
+                f_out = _safe_float(data.get("fade_out"), 0.0)
+                cmd += ["-af", f"afade=t=in:st=0:d={f_in}:curve=tri,afade=t=out:st={max(dur-f_out,0.0)}:d={f_out}:curve=tri"]
+            cmd += [
+                "-c:v", "libx264", "-preset", "veryfast", "-crf", "22",
+                "-r", "24", "-pix_fmt", "yuv420p",
+                "-c:a", "aac", "-b:a", "320k",
+                "-movflags", "+faststart", "-shortest",
+                str(output_video)
+            ]
 
-            p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             set_current_proc(p)
-            p.communicate()
+            _, err = p.communicate()
             set_current_proc(None)
-            if p.returncode == 0: created += 1
 
-        # Zip clips for download
-        if created > 0:
-            zip_path = render_out / "clips.zip"
-            shutil.make_archive(str(zip_path.with_suffix("")), "zip", str(clips_dir))
-            return jsonify({"ok": True, "message": f"Created {created} clip(s).",
-                           "download_url": f"/download/{session_id}/clips.zip"})
-        return Response("No clips were created.", status=500)
+            if p.returncode == 0:
+                created += 1
+                job["videos"][v_idx]["status"] = "done"
+                _write_job(job_id, job)
+                job["videos"][v_idx]["url"] = f"/download/{session_id}/{output_video.name}"
+                _write_job(job_id, job)
+            else:
+                job["videos"][v_idx]["status"] = "error"
+                _write_job(job_id, job)
+                job["videos"][v_idx]["error"] = err[:200]
+                _write_job(job_id, job)
+            job["done"] = created
+            _write_job(job_id, job)
 
-    # ---- VIDEO MODE ----
-    visuals = [f for f in sess_dir.iterdir()
-               if f.name.startswith("visual_") and f.suffix.lower() in VISUAL_EXTS]
-    if not visuals:
-        return Response("No visual found.", status=400)
+        if created > 1:
+            zip_path = render_out / "videos.zip"
+            shutil.make_archive(str(zip_path.with_suffix("")), "zip", str(render_out))
+            job["zip_url"] = f"/download/{session_id}/videos.zip"
+            _write_job(job_id, job)
 
-    visual_path = visuals[0]
-    ext = visual_path.suffix.lower()
+        job["status"] = "done"
+        _write_job(job_id, job)
+        job["message"] = f"Done. Created {created} video(s)."
+        _write_job(job_id, job)
 
-    if ext in {".jpg", ".jpeg", ".png"}:
-        with Image.open(visual_path) as img:
-            w, h = img.size
-    else:
-        w, h = ffprobe_wh(visual_path)
+    except Exception as e:
+        job["status"] = "error"; job["error"] = str(e)
 
-    visual_is_169 = is_16_9(w, h)
-    selected_audio_name = (data.get("selected_audio") or "").strip()
-    sixteen_nine_mode = (data.get("sixteen_nine_mode") or "all").strip().lower()
-    mode = (data.get("mode") or "full").strip().lower()
-    use_segment = (mode == "segment")
-    fade = bool(data.get("fade", False))
-    seg_len = _safe_float(data.get("segment_length_sec"), 0.0)
-    seg_start = _safe_float(data.get("segment_start_sec"), 0.0)
-    res_key = (data.get("resolution") or "1080p").strip().lower()
-    if res_key not in RESOLUTIONS:
-        res_key = "1080p"
 
-    # Build scale filter for this image + chosen resolution
-    scale_filter = build_scale_filter(w, h, res_key)
-
-    separate_169 = (visual_is_169 and sixteen_nine_mode == "separate")
-    if (not visual_is_169) or separate_169:
-        match = [a for a in audio_files if a.name == selected_audio_name]
-        if not match: return Response("Please choose a valid audio file.", status=400)
-        render_audio_files = match
-    else:
-        render_audio_files = audio_files
-        use_segment = False
-        fade = False
-
-    created = 0
-    download_urls = []
-
-    for audio in render_audio_files:
-        if STOP_EVENT.is_set(): break
-        output_video = render_out / f"{audio.stem}.mp4"
-        if output_video.exists(): continue
-
-        if visual_path.suffix.lower() in [".jpg", ".jpeg", ".png"]:
-            input_v = ["-loop", "1", "-i", str(visual_path)]
-        else:
-            input_v = ["-stream_loop", "-1", "-i", str(visual_path)]
-
-        cmd = [FFMPEG, "-y", *input_v]
-        if use_segment:
-            cmd += ["-ss", str(max(seg_start, 0.0))]
-            if seg_len > 0: cmd += ["-t", str(seg_len)]
-
-        cmd += ["-i", str(audio), "-map", "0:v:0", "-map", "1:a:0"]
-        cmd += ["-vf", scale_filter]
-
-        if fade:
-            dur = seg_len if (use_segment and seg_len > 0) else audio_duration(audio)
-            f_in = _safe_float(data.get("fade_in"), 0.0)
-            f_out = _safe_float(data.get("fade_out"), 0.0)
-            cmd += ["-af", f"afade=t=in:st=0:d={f_in}:curve=tri,afade=t=out:st={max(dur-f_out,0.0)}:d={f_out}:curve=tri"]
-
-        cmd += [
-            "-c:v", "libx264",
-            "-preset", "veryfast",
-            "-crf", "22",
-            "-r", "24",
-            "-pix_fmt", "yuv420p",
-            "-c:a", "aac",
-            "-b:a", "320k",
-            "-movflags", "+faststart",
-            "-shortest",
-            str(output_video)
-        ]
-
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        set_current_proc(p)
-        _, err = p.communicate()
-        set_current_proc(None)
-
-        if p.returncode == 0:
-            created += 1
-            download_urls.append({
-                "filename": output_video.name,
-                "url": f"/download/{session_id}/{output_video.name}"
-            })
-        else:
-            return Response(f"Render failed: {err}", status=500)
-
-    if created == 0:
-        return Response("No videos were created (all may already exist).", status=400)
-
-    # If multiple videos, also offer a zip
-    if len(download_urls) > 1:
-        zip_path = render_out / "videos.zip"
-        shutil.make_archive(str(zip_path.with_suffix("")), "zip", str(render_out),
-                           base_dir=None)
-        download_urls.append({"filename": "videos.zip", "url": f"/download/{session_id}/videos.zip"})
-
-    return jsonify({
-        "ok": True,
-        "message": f"Done. Created {created} video(s).",
-        "downloads": download_urls,
+@app.route("/render", methods=["POST"])
+def render():
+    STOP_EVENT.clear()
+    data = request.get_json(force=True) or {}
+    job_id = str(uuid.uuid4())
+    _write_job(job_id, {
+        "status": "running", "total": 0, "done": 0,
+        "videos": [], "message": "", "error": "", "zip_url": None,
     })
+    threading.Thread(target=_run_render_job, args=(job_id, data), daemon=True).start()
+    return jsonify({"ok": True, "job_id": job_id})
 
-# ------------------------------------------------------------
-# Merge clips
-# ------------------------------------------------------------
+
+@app.route("/render_progress/<job_id>")
+def render_progress(job_id: str):
+    job = _read_job(job_id)
+    if not job:
+        return jsonify({"error": "Job not found"}), 404
+    return jsonify(job)
 @app.route("/merge_clips", methods=["POST"])
 def merge_clips():
     STOP_EVENT.clear()

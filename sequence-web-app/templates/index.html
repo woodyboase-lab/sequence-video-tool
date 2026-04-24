@@ -110,6 +110,29 @@
     .mode-btn{padding:7px 16px;border-radius:6px;border:none;background:none;color:var(--text-muted);font-family:var(--sans);font-size:13px;cursor:pointer;transition:all 0.15s;}
     .mode-btn.active{background:var(--surface);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,0.4);}
     .section-head{font-size:11px;font-family:var(--mono);color:var(--text-dim);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:12px;}
+
+    .res-toggle{display:flex;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:3px;gap:3px;}
+    .res-btn{padding:7px 14px;border-radius:6px;border:none;background:none;color:var(--text-muted);font-family:var(--mono);font-size:12px;font-weight:500;cursor:pointer;transition:all 0.15s;letter-spacing:0.3px;}
+    .res-btn:hover{color:var(--text);}
+    .res-btn.active{background:var(--accent);color:#000;box-shadow:0 1px 3px rgba(0,0,0,0.4);}
+    .video-progress-list{display:flex;flex-direction:column;gap:8px;margin-top:12px;}
+    .video-progress-item{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px 14px;}
+    .vpi-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px;}
+    .vpi-name{font-family:var(--mono);font-size:12px;color:var(--text);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .vpi-status{font-family:var(--mono);font-size:11px;flex-shrink:0;}
+    .vpi-status.rendering{color:var(--accent);}
+    .vpi-status.done{color:var(--green);}
+    .vpi-status.error{color:var(--red);}
+    .vpi-bar-bg{height:3px;background:var(--border);border-radius:2px;overflow:hidden;}
+    .vpi-bar-fill{height:100%;border-radius:2px;width:0%;transition:width 0.5s;}
+    .vpi-bar-fill.rendering{background:var(--accent);animation:pulse-bar 1.5s ease-in-out infinite;}
+    .vpi-bar-fill.done{background:var(--green);width:100%!important;}
+    .vpi-bar-fill.error{background:var(--red);width:100%!important;}
+    @keyframes pulse-bar{0%,100%{opacity:1;}50%{opacity:0.5;}}
+    .overall-progress{margin-top:12px;}
+    .overall-bar-bg{height:4px;background:var(--border);border-radius:2px;overflow:hidden;margin-top:6px;}
+    .overall-bar-fill{height:100%;background:var(--accent);border-radius:2px;width:0%;transition:width 0.5s;}
+    .overall-label{font-family:var(--mono);font-size:11px;color:var(--text-muted);display:flex;justify-content:space-between;}
   </style>
 </head>
 <body>
@@ -117,7 +140,7 @@
   <header>
     <div class="logo">
       <div class="logo-mark"><svg viewBox="0 0 18 18" fill="none"><path d="M4 3.5L14 9L4 14.5V3.5Z" fill="#000"/></svg></div>
-      <div><div class="logo-text">Sequence</div><div class="logo-sub">Video &amp; Audio Tool</div></div>
+      <div><div class="logo-text">Sequence</div><div class="logo-sub">Media Encoder</div></div>
     </div>
     <div class="header-status"><span class="status-dot" id="statusDot"></span><span id="statusText">Checking...</span></div>
   </header>
@@ -154,7 +177,7 @@
   <div class="card">
     <div class="card-label">Audio Folder <span class="badge" id="audioBadge">&#8212;</span></div>
     <div class="upload-zone" id="audioZone">
-      <input type="file" id="audioFiles" accept=".wav,.aif,.aiff,.mp3" multiple webkitdirectory onchange="onAudioSelected()">
+      <input type="file" id="audioFiles" accept=".wav,.aif,.aiff,.mp3" multiple onchange="onAudioSelected()">
       <span class="uz-icon">&#127925;</span>
       <div class="uz-title">Click to select your audio folder</div>
       <div class="uz-sub">Select the whole folder &#8212; WAV, AIF, MP3 supported</div>
@@ -184,16 +207,21 @@
     </div>
   </div>
 
-  <div class="card" id="resolutionCard">
-    <div class="card-label">Export Resolution <span class="badge yellow" id="resBadge">1080p</span></div>
-    <select id="resolutionSelect" onchange="onResolutionChanged()" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:9px 12px;color:var(--text);font-family:var(--mono);font-size:13px;outline:none;appearance:none;-webkit-appearance:none;background-image:url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' fill='none'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23888' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E&quot;);background-repeat:no-repeat;background-position:right 12px center;padding-right:32px;">
-      <option value="4k">4K — Landscape 3840x2160 / Square 4000x4000</option>
-      <option value="2k">2K — Landscape 2560x1440 / Square 2000x2000</option>
-      <option value="1080p" selected>1080p — Landscape 1920x1080 / Square 1080x1080 (recommended)</option>
-      <option value="720p">720p — Landscape 1280x720 / Square 720x720</option>
-      <option value="480p">480p — Landscape 854x480 / Square 480x480</option>
-    </select>
-    <div class="hint" id="resHint" style="margin-top:8px;">Aspect ratio is always preserved. Portrait and unusual shapes scale to fit within the chosen size.</div>
+  <div class="card hidden" id="resolutionCard" style="padding:16px 24px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+      <div>
+        <div style="font-size:13px;font-weight:500;margin-bottom:3px;">Export Resolution</div>
+        <div class="hint">Aspect ratio always preserved — scales to longest edge</div>
+      </div>
+      <div class="res-toggle">
+        <button class="res-btn" data-res="original" onclick="setResolution('original')">Original</button>
+        <button class="res-btn" data-res="4k" onclick="setResolution('4k')">4K</button>
+        <button class="res-btn" data-res="2k" onclick="setResolution('2k')">2K</button>
+        <button class="res-btn active" data-res="1080p" onclick="setResolution('1080p')">1080p</button>
+        <button class="res-btn" data-res="720p" onclick="setResolution('720p')">720p</button>
+        <button class="res-btn" data-res="480p" onclick="setResolution('480p')">480p</button>
+      </div>
+    </div>
   </div>
 
   <div class="card hidden" id="optionsCard">
@@ -247,6 +275,8 @@
     </div>
     <div class="render-output" id="renderOutput">
       <div class="status-line" id="renderStatus"></div>
+      <div class="overall-progress hidden" id="overallProgress"><div class="overall-label"><span id="overallLabel">Rendering...</span><span id="overallCount">0 / 0</span></div><div class="overall-bar-bg"><div class="overall-bar-fill" id="overallBarFill"></div></div></div>
+      <div class="video-progress-list hidden" id="videoProgressList"></div>
       <div class="download-list" id="downloadList"></div>
     </div>
   </div>
@@ -269,6 +299,8 @@ function setMode(m){
   document.getElementById("modeVideo").classList.toggle("active",m==="video");
   document.getElementById("modeAudio").classList.toggle("active",m==="audio");
   document.getElementById("visualCard").classList.toggle("hidden",m==="audio");
+  // resolutionCard visibility is handled by renderInspectResult and resetInspect
+  if(m==="audio") document.getElementById("resolutionCard").classList.add("hidden");
   resetInspect();
   if(audioUploaded||(visualUploaded&&m==="video"))refreshInspect();
 }
@@ -325,7 +357,7 @@ function clearAudio(){
   audioUploaded=false;document.getElementById("audioFiles").value="";
   const z=document.getElementById("audioZone");z.classList.remove("has-file");
   z.querySelector(".uz-title").textContent="Click to select your audio folder";
-  z.querySelector(".uz-sub").textContent="Select the whole folder — WAV, AIF, MP3 supported";
+  z.querySelector(".uz-sub").textContent="Select all your audio files — WAV, AIF, MP3 supported. Use Cmd+A to select all at once.";
   hideFileInfo("audio");setBadge("audioBadge","—","");resetInspect();
 }
 
@@ -369,15 +401,18 @@ function renderInspectResult(data){
   document.getElementById("sixteenNineModeBox").classList.toggle("hidden",!v.is_16_9);
   if(treatAsNon169){
     document.getElementById("optionsCard").classList.remove("hidden");
+    document.getElementById("resolutionCard").classList.remove("hidden");
     document.getElementById("non169Panel").classList.remove("hidden");
     document.getElementById("audioOnlyPanel").classList.add("hidden");
     const pick=document.getElementById("audioPickNon169"),prev=pick.value;pick.innerHTML="";
     (data.audio.files||[]).forEach(name=>{const opt=document.createElement("option");opt.value=name;opt.textContent=name;if(name===prev)opt.selected=true;pick.appendChild(opt);});
     non169_toggleSegment();non169_toggleFade();
     if(document.getElementById("modeNon169").value==="segment")non169_initWave();else non169_destroyWave();
-  }else{
+  } else {
     document.getElementById("optionsCard").classList.add("hidden");
-    document.getElementById("non169Panel").classList.add("hidden");non169_destroyWave();
+    document.getElementById("non169Panel").classList.add("hidden");
+    document.getElementById("resolutionCard").classList.add("hidden");
+    non169_destroyWave();
   }
   updateMergeBtn();
 }
@@ -387,6 +422,7 @@ function resetInspect(){
   document.getElementById("inspectBar").innerHTML='<span style="font-size:12px;color:var(--text-dim);font-family:var(--mono);">Upload files above to continue</span>';
   document.getElementById("optionsCard").classList.add("hidden");
   document.getElementById("sixteenNineModeBox").classList.add("hidden");
+  document.getElementById("resolutionCard").classList.add("hidden");
   non169_destroyWave();audioOnly_destroyAll();updateStartBtn();updateMergeBtn();
 }
 function setInspectLoading(on){if(on)document.getElementById("inspectBar").innerHTML='<span class="spinner"></span><span style="font-size:12px;color:var(--text-dim);font-family:var(--mono);margin-left:8px;">Checking...</span>';}
@@ -510,11 +546,74 @@ function audioOnly_playPause(id){
 }
 function audioOnly_stopClip(id){const st=clipState[id];if(!st||!st.ws)return;try{st.ws.stop();}catch(_){}st.playing=false;if(st.playTimer){clearInterval(st.playTimer);st.playTimer=null;}if(st.region)st.ws.seekTo(st.duration>0?(st.region.start/st.duration):0);}
 
+let currentJobId=null,progressPoller=null;
+
+function startProgressPolling(jobId){
+  if(progressPoller)clearInterval(progressPoller);
+  progressPoller=setInterval(()=>pollProgress(jobId),1000);
+}
+
+async function pollProgress(jobId){
+  try{
+    const r=await fetch("/render_progress/"+jobId);
+    if(!r.ok)return;
+    const job=await r.json();
+    updateProgressUI(job);
+    if(job.status==="done"||job.status==="error"){
+      clearInterval(progressPoller);progressPoller=null;setRunning(false);
+      if(job.status==="done"){
+        const s=document.getElementById("renderStatus");
+        s.className="status-line ok";s.textContent="\u2713 "+(job.message||"Done.");
+        const list=document.getElementById("downloadList");list.innerHTML="";
+        (job.videos||[]).filter(v=>v.status==="done"&&v.url).forEach(v=>{
+          const item=document.createElement("div");item.className="download-item";
+          item.innerHTML='<span class="dl-name">'+v.name+'</span><a class="btn btn-download btn-sm" href="'+v.url+'" download="'+v.name+'">\u2193 Download</a>';
+          list.appendChild(item);
+        });
+        if(job.zip_url){
+          const item=document.createElement("div");item.className="download-item";
+          item.innerHTML='<span class="dl-name">All videos (ZIP)</span><a class="btn btn-download btn-sm" href="'+job.zip_url+'" download="videos.zip">\u2193 Download all</a>';
+          list.appendChild(item);
+        }
+      }else{showError(job.error||"Render failed.");}
+    }
+  }catch(e){console.error("Poll error:",e);}
+}
+
+function updateProgressUI(job){
+  const total=job.total||0,done=job.done||0,videos=job.videos||[];
+  const overallDiv=document.getElementById("overallProgress");
+  const vplDiv=document.getElementById("videoProgressList");
+  if(total>1){
+    overallDiv.classList.remove("hidden");vplDiv.classList.remove("hidden");
+    document.getElementById("overallCount").textContent=done+" / "+total;
+    document.getElementById("overallLabel").textContent=job.status==="done"?"Complete":"Rendering...";
+    document.getElementById("overallBarFill").style.width=(total>0?(done/total)*100:0)+"%";
+    vplDiv.innerHTML="";
+    videos.forEach(v=>{
+      const row=document.createElement("div");row.className="video-progress-item";
+      const label=v.status==="done"?"\u2713 Done":v.status==="error"?"\u2717 Error":v.status==="rendering"?"Rendering...":"Waiting";
+      row.innerHTML='<div class="vpi-head"><span class="vpi-name">'+v.name+'</span>'+
+        (v.status==="done"&&v.url?'<a class="btn btn-download btn-sm" href="'+v.url+'" download="'+v.name+'">\u2193 Download</a>':'<span class="vpi-status '+v.status+'">'+label+'</span>')+
+        '</div><div class="vpi-bar-bg"><div class="vpi-bar-fill '+v.status+'"></div></div>';
+      vplDiv.appendChild(row);
+    });
+  }else{
+    overallDiv.classList.add("hidden");
+    if(videos.length===1&&videos[0].status==="rendering"){
+      vplDiv.classList.remove("hidden");
+      vplDiv.innerHTML='<div class="video-progress-item"><div class="vpi-head"><span class="vpi-name">'+videos[0].name+'</span><span class="vpi-status rendering">Rendering...</span></div><div class="vpi-bar-bg"><div class="vpi-bar-fill rendering" style="width:60%"></div></div></div>';
+    }else if(job.status==="done"||job.status==="error"){
+      vplDiv.classList.add("hidden");
+    }
+  }
+}
+
 async function startRender(){
-  if(!latestInspect)return;document.getElementById("renderStatus").className="status-line";document.getElementById("downloadList").innerHTML="";setRunning(true);
+  if(!latestInspect)return;document.getElementById("renderStatus").className="status-line";document.getElementById("downloadList").innerHTML="";document.getElementById("videoProgressList").innerHTML="";document.getElementById("videoProgressList").classList.add("hidden");document.getElementById("overallProgress").classList.add("hidden");setRunning(true);
   try{
     const ao=currentMode==="audio";
-    const resolution=document.getElementById("resolutionSelect")?.value||"1080p";
+    const resolution = selectedResolution || "1080p";
     let payload={session_id:SESSION_ID,audio_only:ao,resolution};
     if(ao){
       const clips=[];for(const id of clipOrder){const name=document.getElementById("audioPick_"+id)?.value||"";if(!name)continue;clips.push({selected_audio:name,segment_length_sec:clipSegLen(id),segment_start_sec:clipStartSecs(id),fade:document.getElementById("fade_"+id)?.checked||false,fade_in:document.getElementById("fadeIn_"+id)?.value||"1.0",fade_out:document.getElementById("fadeOut_"+id)?.value||"1.0"});}
@@ -527,10 +626,18 @@ async function startRender(){
       else{payload.mode="full";payload.fade=false;payload.fade_in="0";payload.fade_out="0";payload.segment_length_sec=0;payload.segment_start_sec=0;}
     }
     const r=await fetch("/render",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
-    const txt=await r.text();if(!r.ok)throw new Error(txt);const result=JSON.parse(txt);showSuccess(result.message,result.downloads||[]);
-  }catch(e){showError(e.message||e);}finally{setRunning(false);}
+    const txt=await r.text();if(!r.ok)throw new Error(txt);
+    const result=JSON.parse(txt);
+    if(result.job_id){
+      currentJobId=result.job_id;
+      startProgressPolling(result.job_id);
+      return;
+    }
+    showSuccess(result.message,result.downloads||[]);
+  }catch(e){showError(e.message||e);setRunning(false);}
 }
-async function stopRender(){await fetch("/stop",{method:"POST"});document.getElementById("renderStatus").className="status-line";document.getElementById("renderStatus").textContent="Stopped.";setRunning(false);}
+async function stopRender(){
+  if(progressPoller){clearInterval(progressPoller);progressPoller=null;}await fetch("/stop",{method:"POST"});document.getElementById("renderStatus").className="status-line";document.getElementById("renderStatus").textContent="Stopped.";setRunning(false);}
 async function mergeClips(){
   if(!latestInspect)return;setRunning(true);
   try{
@@ -541,10 +648,12 @@ async function mergeClips(){
   }catch(e){showError(e.message||e);}finally{setRunning(false);}
 }
 
-function onResolutionChanged(){
-  const val = document.getElementById("resolutionSelect").value;
-  const labels = {"4k":"4K","2k":"2K","1080p":"1080p","720p":"720p","480p":"480p"};
-  setBadge("resBadge", labels[val]||val, "yellow");
+let selectedResolution = "1080p";
+function setResolution(res){
+  selectedResolution = res;
+  document.querySelectorAll(".res-btn").forEach(b => {
+    b.classList.toggle("active", b.dataset.res === res);
+  });
 }
 
 function pad2(n){return String(Math.max(0,Math.floor(n))).padStart(2,"0");}
