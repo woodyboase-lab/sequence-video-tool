@@ -133,6 +133,37 @@
     .overall-bar-bg{height:4px;background:var(--border);border-radius:2px;overflow:hidden;margin-top:6px;}
     .overall-bar-fill{height:100%;background:var(--accent);border-radius:2px;width:0%;transition:width 0.5s;}
     .overall-label{font-family:var(--mono);font-size:11px;color:var(--text-muted);display:flex;justify-content:space-between;}
+
+    /* Socials Animations mode */
+    .pill-group{display:flex;flex-wrap:wrap;gap:6px;}
+    .pill{padding:8px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);font-size:12px;color:var(--text-muted);cursor:pointer;transition:all 0.15s;font-family:var(--mono);letter-spacing:0.3px;user-select:none;}
+    .pill:hover{border-color:var(--border-hover);color:var(--text);}
+    .pill.active{background:var(--accent-dim);border-color:var(--accent);color:var(--accent);}
+    .slider-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-family:var(--mono);font-size:12px;color:var(--text-muted);}
+    .slider-row .val{color:var(--accent);font-size:11px;}
+    input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:3px;background:var(--border);border-radius:2px;outline:none;}
+    input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;background:var(--accent);border-radius:50%;cursor:pointer;border:2px solid var(--bg);}
+    input[type=range]::-moz-range-thumb{width:14px;height:14px;background:var(--accent);border-radius:50%;cursor:pointer;border:2px solid var(--bg);}
+    .socials-layout{display:grid;grid-template-columns:1fr 300px;gap:12px;align-items:start;}
+    @media(max-width:760px){.socials-layout{grid-template-columns:1fr;}}
+    .preview-wrap{display:flex;align-items:center;justify-content:center;padding:20px;background:var(--surface2);border-radius:var(--radius-sm);min-height:480px;}
+    .phone-frame{position:relative;width:240px;height:427px;border-radius:16px;overflow:hidden;background:#222;box-shadow:0 12px 40px rgba(0,0,0,0.6),0 0 0 1px rgba(255,255,255,0.04);}
+    .phone-frame.empty::after{content:"Upload a square image to preview";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--text-dim);font-family:var(--mono);font-size:11px;text-align:center;padding:20px;}
+    .bg-layer{position:absolute;inset:-20%;background-size:140% 140%;background-position:center;transition:filter 0.3s;}
+    .bg-layer.inverted{filter:invert(1);}
+    .bg-layer.bw{filter:grayscale(1);}
+    .strobe-layer{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;}
+    .strobe-layer.active{animation:strobe 0.2s steps(1) infinite;}
+    @keyframes strobe{0%,49%{background:#000;opacity:var(--strobe-op,0.6);}50%,100%{background:#fff;opacity:var(--strobe-op,0.6);}}
+    .fg-square{position:absolute;width:68%;aspect-ratio:1;left:50%;top:50%;transform:translate(-50%,-50%);background-size:cover;background-position:center;box-shadow:0 0 40px 8px rgba(0,0,0,0.45);z-index:2;}
+    .bg-layer.pan-horizontal{animation:panH var(--pan-dur,4s) ease-in-out infinite alternate;}
+    .bg-layer.pan-diagonal{animation:panD var(--pan-dur,4s) ease-in-out infinite alternate;}
+    .bg-layer.pan-diamond{animation:panDia var(--pan-dur,4s) linear infinite;}
+    @keyframes panH{0%{background-position:0% center;}100%{background-position:100% center;}}
+    @keyframes panD{0%{background-position:0% 0%;}100%{background-position:100% 100%;}}
+    @keyframes panDia{0%{background-position:50% 0%;}25%{background-position:100% 50%;}50%{background-position:50% 100%;}75%{background-position:0% 50%;}100%{background-position:50% 0%;}}
+    .preview-meta{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--surface2);border-radius:var(--radius-sm);font-family:var(--mono);font-size:10px;color:var(--text-muted);margin-top:10px;}
+    .preview-meta .v{color:var(--accent);}
   </style>
 </head>
 <body>
@@ -151,9 +182,135 @@
       <div class="mode-toggle">
         <button class="mode-btn active" id="modeVideo" onclick="setMode('video')">Video</button>
         <button class="mode-btn" id="modeAudio" onclick="setMode('audio')">Audio only</button>
+        <button class="mode-btn" id="modeSocials" onclick="setMode('socials')">Socials</button>
       </div>
     </div>
   </div>
+
+  <!-- SOCIALS ANIMATIONS PANEL -->
+  <div class="card hidden" id="socialsPanel">
+    <div class="socials-layout">
+      <div>
+        <div class="card-label">Square Image <span class="badge" id="socialsImageBadge">REQUIRED</span></div>
+        <div class="upload-zone" id="socialsImageZone">
+          <input type="file" id="socialsImageFile" accept=".jpg,.jpeg,.png" onchange="onSocialsImageSelected()">
+          <span class="uz-icon">&#128444;</span>
+          <div class="uz-title">Click to upload a square image</div>
+          <div class="uz-sub">JPG or PNG — will be placed in centre of 9:16 frame</div>
+        </div>
+        <div class="file-info" id="socialsImageInfo">
+          <span class="fi-dot"></span><span class="fi-name" id="socialsImageInfoName"></span>
+          <span class="fi-meta" id="socialsImageInfoMeta"></span>
+          <button class="fi-clear" onclick="clearSocialsImage()">&#10005;</button>
+        </div>
+        <div class="progress-wrap" id="socialsImageProgress">
+          <div class="progress-bar-bg"><div class="progress-bar-fill" id="socialsImageProgressFill"></div></div>
+          <div class="progress-label" id="socialsImageProgressLabel">Uploading...</div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="card-label">Background Treatment</div>
+        <div class="pill-group" id="socialsBgTreatment">
+          <div class="pill active" data-v="normal">Normal</div>
+          <div class="pill" data-v="inverted">Inverted</div>
+          <div class="pill" data-v="bw">Black &amp; White</div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="card-label">Animation</div>
+        <div class="pill-group" id="socialsAnimType">
+          <div class="pill active" data-v="none">None</div>
+          <div class="pill" data-v="strobe">Strobe</div>
+          <div class="pill" data-v="horizontal">Pan &mdash; Horizontal</div>
+          <div class="pill" data-v="diagonal">Pan &mdash; Diagonal</div>
+          <div class="pill" data-v="diamond">Pan &mdash; Diamond</div>
+        </div>
+
+        <div id="socialsStrobeControls" class="hidden" style="margin-top:16px;">
+          <div class="slider-row"><span>Strobe intensity</span><span class="val" id="socialsStrobeOpVal">60%</span></div>
+          <input type="range" min="10" max="100" value="60" id="socialsStrobeOp">
+        </div>
+
+        <div id="socialsPanControls" class="hidden" style="margin-top:16px;">
+          <div class="slider-row"><span>Loop duration</span><span class="val" id="socialsPanDurVal">4s</span></div>
+          <input type="range" min="2" max="12" value="4" id="socialsPanDur">
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="card-label">Audio Track <span class="badge">OPTIONAL</span></div>
+        <label class="check-row" style="margin-bottom:12px;">
+          <input type="checkbox" id="socialsAudioToggle" onchange="onSocialsAudioToggle()">
+          <span class="check-box"></span>
+          <div>
+            <div class="check-label">Add audio to output</div>
+            <div class="check-sub">Animation will loop to match audio duration</div>
+          </div>
+        </label>
+        <div class="hidden" id="socialsAudioWrap">
+          <div class="upload-zone" id="socialsAudioZone">
+            <input type="file" id="socialsAudioFile" accept=".wav,.aif,.aiff,.mp3" onchange="onSocialsAudioSelected()">
+            <span class="uz-icon">&#127925;</span>
+            <div class="uz-title">Click to upload audio</div>
+            <div class="uz-sub">WAV, AIF or MP3</div>
+          </div>
+          <div class="file-info" id="socialsAudioInfo">
+            <span class="fi-dot"></span><span class="fi-name" id="socialsAudioInfoName"></span>
+            <span class="fi-meta" id="socialsAudioInfoMeta"></span>
+            <button class="fi-clear" onclick="clearSocialsAudio()">&#10005;</button>
+          </div>
+          <div class="hidden" id="socialsSegmentControls" style="margin-top:14px;">
+            <div class="grid2" style="margin-bottom:14px;">
+              <div class="field" style="margin:0;"><label>Segment length (sec)</label><input type="number" id="socialsSegLen" value="15" min="1" oninput="socials_onSegLenChanged()"></div>
+              <div class="field" style="margin:0;"><label>Start (MM:SS)</label><input type="text" id="socialsSegStart" value="00:00" oninput="socials_onStartInput()" onblur="socials_onStartBlur()"></div>
+            </div>
+            <div class="wave-card">
+              <div class="wave-container" id="socialsWave"></div>
+              <div class="wave-controls">
+                <button class="btn btn-ghost btn-sm" onclick="socials_playPause()">&#9654; Play/Pause</button>
+                <button class="btn btn-ghost btn-sm" onclick="socials_stopWave()">&#9632; Stop</button>
+                <span class="wave-info" id="socialsWaveInfo"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="card-label">Output</div>
+        <div id="socialsDurationField">
+          <div class="slider-row"><span>Duration</span><span class="val" id="socialsDurVal">8s</span></div>
+          <input type="range" min="3" max="20" value="8" id="socialsDur">
+        </div>
+        <div class="hint hidden" id="socialsDurationAudioNote">Duration is set by your selected audio segment length</div>
+        <div style="margin-top:14px;">
+          <div class="pill-group" id="socialsOutputFormat">
+            <div class="pill active" data-v="mp4">MP4</div>
+            <div class="pill" data-v="gif">GIF</div>
+            <div class="pill" data-v="both">Both</div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="card-label">Live Preview <span class="badge yellow">9:16</span></div>
+        <div class="preview-wrap">
+          <div class="phone-frame empty" id="socialsPhoneFrame">
+            <div class="bg-layer" id="socialsBgLayer"></div>
+            <div class="strobe-layer" id="socialsStrobeLayer"></div>
+            <div class="fg-square" id="socialsFgSquare"></div>
+          </div>
+        </div>
+        <div class="preview-meta">
+          <span>1080 &times; 1920</span>
+          <span class="v" id="socialsDurMeta">8s &middot; MP4</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- END SOCIALS PANEL -->
 
   <div class="card" id="visualCard">
     <div class="card-label">Visual <span class="badge" id="visualBadge">&#8212;</span></div>
@@ -174,7 +331,7 @@
     </div>
   </div>
 
-  <div class="card">
+  <div class="card hide-in-socials">
     <div class="card-label">Audio Folder <span class="badge" id="audioBadge">&#8212;</span></div>
     <div class="upload-zone" id="audioZone">
       <input type="file" id="audioFiles" accept=".wav,.aif,.aiff,.mp3" multiple onchange="onAudioSelected()">
@@ -201,7 +358,7 @@
     </div>
   </div>
 
-  <div class="card" style="padding:14px 24px;">
+  <div class="card hide-in-socials" style="padding:14px 24px;">
     <div class="inspect-bar" id="inspectBar">
       <span style="font-size:12px;color:var(--text-dim);font-family:var(--mono);">Upload files above to continue</span>
     </div>
@@ -269,9 +426,10 @@
 
   <div class="card">
     <div class="btn-row">
-      <button class="btn btn-primary" id="startBtn" onclick="startRender()" disabled><span id="startBtnLabel">Start rendering</span></button>
-      <button class="btn btn-danger" id="stopBtn" onclick="stopRender()" disabled>Stop</button>
+      <button class="btn btn-primary hide-in-socials" id="startBtn" onclick="startRender()" disabled><span id="startBtnLabel">Start rendering</span></button>
+      <button class="btn btn-danger hide-in-socials" id="stopBtn" onclick="stopRender()" disabled>Stop</button>
       <button class="btn btn-ghost hidden" id="mergeBtn" onclick="mergeClips()">Merge clips</button>
+      <button class="btn btn-primary hidden" id="socialsStartBtn" onclick="startSocialsRender()" disabled>Start rendering</button>
     </div>
     <div class="render-output" id="renderOutput">
       <div class="status-line" id="renderStatus"></div>
@@ -298,8 +456,23 @@ function setMode(m){
   currentMode=m;
   document.getElementById("modeVideo").classList.toggle("active",m==="video");
   document.getElementById("modeAudio").classList.toggle("active",m==="audio");
-  document.getElementById("visualCard").classList.toggle("hidden",m==="audio");
-  // resolutionCard visibility is handled by renderInspectResult and resetInspect
+  document.getElementById("modeSocials").classList.toggle("active",m==="socials");
+
+  // Socials mode: hide the entire video/audio pipeline and show socials panel
+  const isSocials = m==="socials";
+  document.getElementById("socialsPanel").classList.toggle("hidden", !isSocials);
+  document.getElementById("visualCard").classList.toggle("hidden", isSocials || m==="audio");
+  // Hide the audio card and inspect bar and action row when in socials mode
+  document.querySelectorAll(".hide-in-socials").forEach(el => el.classList.toggle("hidden", isSocials));
+
+  if(isSocials){
+    document.getElementById("resolutionCard").classList.add("hidden");
+    document.getElementById("optionsCard").classList.add("hidden");
+    document.getElementById("socialsStartBtn").classList.remove("hidden");
+    return;
+  }
+  document.getElementById("socialsStartBtn").classList.add("hidden");
+
   if(m==="audio") document.getElementById("resolutionCard").classList.add("hidden");
   resetInspect();
   if(audioUploaded||(visualUploaded&&m==="video"))refreshInspect();
@@ -660,6 +833,259 @@ function pad2(n){return String(Math.max(0,Math.floor(n))).padStart(2,"0");}
 function secsToMMSS(s){s=Math.max(0,Math.floor(s));return pad2(Math.floor(s/60))+":"+pad2(s%60);}
 function mmssToSecs(str){const m=(str||"").trim().match(/^(\d{1,3}):(\d{1,2})$/);if(!m)return null;const mm=parseInt(m[1]),ss=parseInt(m[2]);if(isNaN(mm)||isNaN(ss)||ss>59)return null;return mm*60+ss;}
 function clampStart(start,segLen,dur){if(!dur||dur<=0)return 0;return Math.min(Math.max(start,0),Math.max(dur-segLen,0));}
+
+// ============================================================
+// SOCIALS ANIMATIONS
+// ============================================================
+let socialsState = {
+  imageUploaded: false,
+  imageDataUrl: null,
+  bgTreatment: "normal",
+  animation: "none",
+  strobeOpacity: 60,
+  panDuration: 4,
+  duration: 8,
+  outputFormat: "mp4",
+  audioFile: null,
+  audioBlobUrl: null
+};
+let socials_ws=null, socials_regions=null, socials_region=null, socials_duration=0, socials_playing=false, socials_playTimer=null, socials_startInputDirty=false;
+
+async function onSocialsImageSelected(){
+  const file = document.getElementById("socialsImageFile").files[0];
+  if(!file) return;
+  showProgress("socialsImage", 0, "Uploading...");
+  // Read file for preview (doesn't need server yet)
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    socialsState.imageDataUrl = e.target.result;
+    socialsState.imageUploaded = true;
+    document.getElementById("socialsBgLayer").style.backgroundImage = `url(${e.target.result})`;
+    document.getElementById("socialsFgSquare").style.backgroundImage = `url(${e.target.result})`;
+    document.getElementById("socialsPhoneFrame").classList.remove("empty");
+    const z = document.getElementById("socialsImageZone");
+    z.classList.add("has-file");
+    z.querySelector(".uz-title").textContent = file.name;
+    z.querySelector(".uz-sub").textContent = "Ready — adjust options below";
+    showFileInfo("socialsImage", file.name, (file.size/1024).toFixed(0) + " KB");
+    setBadge("socialsImageBadge", "READY", "green");
+    hideProgress("socialsImage");
+    updateSocialsStartBtn();
+  };
+  reader.onerror = () => { hideProgress("socialsImage"); showError("Failed to read image."); };
+  showProgress("socialsImage", 50, "Processing...");
+  reader.readAsDataURL(file);
+}
+
+function clearSocialsImage(){
+  socialsState.imageUploaded = false;
+  socialsState.imageDataUrl = null;
+  document.getElementById("socialsImageFile").value = "";
+  document.getElementById("socialsBgLayer").style.backgroundImage = "";
+  document.getElementById("socialsFgSquare").style.backgroundImage = "";
+  document.getElementById("socialsPhoneFrame").classList.add("empty");
+  const z = document.getElementById("socialsImageZone");
+  z.classList.remove("has-file");
+  z.querySelector(".uz-title").textContent = "Click to upload a square image";
+  z.querySelector(".uz-sub").textContent = "JPG or PNG — will be placed in centre of 9:16 frame";
+  hideFileInfo("socialsImage");
+  setBadge("socialsImageBadge", "REQUIRED", "");
+  updateSocialsStartBtn();
+}
+
+function updateSocialsStartBtn(){
+  document.getElementById("socialsStartBtn").disabled = !socialsState.imageUploaded;
+}
+
+function socialsSetupPills(groupId, onChange){
+  const group = document.getElementById(groupId);
+  if(!group) return;
+  group.querySelectorAll(".pill").forEach(p => {
+    p.addEventListener("click", () => {
+      group.querySelectorAll(".pill").forEach(x => x.classList.remove("active"));
+      p.classList.add("active");
+      onChange(p.dataset.v);
+    });
+  });
+}
+
+// Initialise socials controls on page load
+window.addEventListener("load", () => {
+  socialsSetupPills("socialsBgTreatment", v => {
+    socialsState.bgTreatment = v;
+    const bg = document.getElementById("socialsBgLayer");
+    bg.classList.remove("inverted","bw");
+    if(v==="inverted") bg.classList.add("inverted");
+    if(v==="bw") bg.classList.add("bw");
+  });
+
+  socialsSetupPills("socialsAnimType", v => {
+    socialsState.animation = v;
+    const bg = document.getElementById("socialsBgLayer");
+    const strobe = document.getElementById("socialsStrobeLayer");
+    bg.classList.remove("pan-horizontal","pan-diagonal","pan-diamond");
+    strobe.classList.remove("active");
+    document.getElementById("socialsStrobeControls").classList.toggle("hidden", v!=="strobe");
+    document.getElementById("socialsPanControls").classList.toggle("hidden", !["horizontal","diagonal","diamond"].includes(v));
+    if(v==="strobe") strobe.classList.add("active");
+    if(v==="horizontal") bg.classList.add("pan-horizontal");
+    if(v==="diagonal") bg.classList.add("pan-diagonal");
+    if(v==="diamond") bg.classList.add("pan-diamond");
+  });
+
+  socialsSetupPills("socialsOutputFormat", v => {
+    socialsState.outputFormat = v;
+    const label = v==="both" ? "MP4+GIF" : v.toUpperCase();
+    document.getElementById("socialsDurMeta").textContent = socialsState.duration + "s · " + label;
+  });
+
+  document.getElementById("socialsStrobeOp").addEventListener("input", e => {
+    socialsState.strobeOpacity = parseInt(e.target.value);
+    document.getElementById("socialsStrobeOpVal").textContent = e.target.value + "%";
+    document.documentElement.style.setProperty("--strobe-op", e.target.value/100);
+  });
+
+  document.getElementById("socialsPanDur").addEventListener("input", e => {
+    socialsState.panDuration = parseInt(e.target.value);
+    document.getElementById("socialsPanDurVal").textContent = e.target.value + "s";
+    document.documentElement.style.setProperty("--pan-dur", e.target.value + "s");
+  });
+
+  document.getElementById("socialsDur").addEventListener("input", e => {
+    socialsState.duration = parseInt(e.target.value);
+    document.getElementById("socialsDurVal").textContent = e.target.value + "s";
+    const fmt = socialsState.outputFormat;
+    const label = fmt==="both" ? "MP4+GIF" : fmt.toUpperCase();
+    document.getElementById("socialsDurMeta").textContent = e.target.value + "s · " + label;
+  });
+});
+
+async function startSocialsRender(){
+  // Backend not wired up yet — placeholder
+  const audioInfo = socialsState.audioFile
+    ? socialsState.audioFile.name + " (" + socials_getSegLen() + "s segment from " + (document.getElementById("socialsSegStart").value || "00:00") + ")"
+    : "no";
+  const effectiveDuration = socialsState.audioFile ? socials_getSegLen() + "s (from audio)" : socialsState.duration + "s";
+  alert("Backend rendering not yet implemented.\n\nYour settings:\n" +
+    "- Background: " + socialsState.bgTreatment + "\n" +
+    "- Animation: " + socialsState.animation + "\n" +
+    (socialsState.animation==="strobe" ? "- Strobe intensity: " + socialsState.strobeOpacity + "%\n" : "") +
+    (["horizontal","diagonal","diamond"].includes(socialsState.animation) ? "- Pan duration: " + socialsState.panDuration + "s\n" : "") +
+    "- Duration: " + effectiveDuration + "\n" +
+    "- Audio: " + audioInfo + "\n" +
+    "- Format: " + socialsState.outputFormat);
+}
+
+function onSocialsAudioToggle(){
+  const on = document.getElementById("socialsAudioToggle").checked;
+  document.getElementById("socialsAudioWrap").classList.toggle("hidden", !on);
+  document.getElementById("socialsDurationField").classList.toggle("hidden", on);
+  document.getElementById("socialsDurationAudioNote").classList.toggle("hidden", !on);
+  if(!on) clearSocialsAudio();
+}
+
+function onSocialsAudioSelected(){
+  const file = document.getElementById("socialsAudioFile").files[0];
+  if(!file) return;
+  socialsState.audioFile = file;
+  // Release any previous blob URL
+  if(socialsState.audioBlobUrl) URL.revokeObjectURL(socialsState.audioBlobUrl);
+  socialsState.audioBlobUrl = URL.createObjectURL(file);
+  const z = document.getElementById("socialsAudioZone");
+  z.classList.add("has-file");
+  z.querySelector(".uz-title").textContent = file.name;
+  z.querySelector(".uz-sub").textContent = "Ready";
+  showFileInfo("socialsAudio", file.name, (file.size/1024/1024).toFixed(1) + " MB");
+  document.getElementById("socialsSegmentControls").classList.remove("hidden");
+  socials_initWave();
+}
+
+function clearSocialsAudio(){
+  socialsState.audioFile = null;
+  if(socialsState.audioBlobUrl){ URL.revokeObjectURL(socialsState.audioBlobUrl); socialsState.audioBlobUrl = null; }
+  document.getElementById("socialsAudioFile").value = "";
+  const z = document.getElementById("socialsAudioZone");
+  z.classList.remove("has-file");
+  z.querySelector(".uz-title").textContent = "Click to upload audio";
+  z.querySelector(".uz-sub").textContent = "WAV, AIF or MP3";
+  hideFileInfo("socialsAudio");
+  document.getElementById("socialsSegmentControls").classList.add("hidden");
+  socials_destroyWave();
+}
+
+function socials_getSegLen(){const v=parseFloat(document.getElementById("socialsSegLen").value);return isNaN(v)||v<=0?15:v;}
+
+function socials_destroyWave(){
+  if(socials_playTimer){clearInterval(socials_playTimer); socials_playTimer=null;}
+  socials_playing = false;
+  try{ if(socials_ws) socials_ws.destroy(); }catch(_){}
+  socials_ws = null; socials_regions = null; socials_region = null; socials_duration = 0;
+  const el = document.getElementById("socialsWave"); if(el) el.innerHTML = "";
+}
+
+function socials_initWave(){
+  if(!socialsState.audioBlobUrl) return;
+  socials_destroyWave();
+  socials_regions = WaveSurfer.Regions.create();
+  socials_ws = WaveSurfer.create({container:"#socialsWave", waveColor:"#333", progressColor:"#333", cursorColor:"#e8ff47", barWidth:2, barGap:1, height:80, normalize:true, plugins:[socials_regions]});
+  document.getElementById("socialsWaveInfo").textContent = "Loading...";
+  socials_ws.on("ready", () => {
+    socials_duration = socials_ws.getDuration() || 0;
+    document.getElementById("socialsWaveInfo").textContent = Math.round(socials_duration) + "s";
+    const sl = socials_getSegLen(), start = clampStart(0, sl, socials_duration);
+    socials_region = socials_regions.addRegion({start, end:start+sl, color:"rgba(232,255,71,0.15)", drag:true, resize:false});
+    document.getElementById("socialsSegStart").value = secsToMMSS(start);
+    socials_region.on("update-end", () => {
+      const sl2 = socials_getSegLen(), s = clampStart(socials_region.start, sl2, socials_duration);
+      socials_region.setOptions({start:s, end:s+sl2});
+      if(!socials_startInputDirty) document.getElementById("socialsSegStart").value = secsToMMSS(s);
+    });
+  });
+  socials_ws.on("error", () => { document.getElementById("socialsWaveInfo").textContent = "Waveform unavailable"; });
+  socials_ws.load(socialsState.audioBlobUrl);
+}
+
+function socials_onSegLenChanged(){
+  if(!socials_region) return;
+  const sl = socials_getSegLen(), s = clampStart(socials_region.start, sl, socials_duration);
+  socials_region.setOptions({start:s, end:s+sl});
+  if(!socials_startInputDirty) document.getElementById("socialsSegStart").value = secsToMMSS(s);
+}
+
+function socials_onStartInput(){ socials_startInputDirty = true; }
+
+function socials_onStartBlur(){
+  socials_startInputDirty = false;
+  if(!socials_region) return;
+  const sec = mmssToSecs(document.getElementById("socialsSegStart").value || "");
+  if(sec === null){ document.getElementById("socialsSegStart").value = secsToMMSS(socials_region.start||0); return; }
+  const sl = socials_getSegLen(), s = clampStart(sec, sl, socials_duration);
+  socials_region.setOptions({start:s, end:s+sl});
+  document.getElementById("socialsSegStart").value = secsToMMSS(s);
+}
+
+function socials_playPause(){
+  if(!socials_ws || !socials_region) return;
+  if(socials_playing){
+    socials_ws.pause(); socials_playing = false;
+    if(socials_playTimer){ clearInterval(socials_playTimer); socials_playTimer = null; }
+    socials_ws.seekTo(socials_duration>0 ? (socials_region.start/socials_duration) : 0);
+    return;
+  }
+  const start = socials_region.start || 0, end = socials_region.end || (start + socials_getSegLen());
+  socials_ws.setTime(start); socials_ws.play(); socials_playing = true;
+  socials_playTimer = setInterval(() => {
+    try{ if(socials_ws.getCurrentTime() >= end) socials_stopWave(); }catch(_){ socials_stopWave(); }
+  }, 60);
+}
+
+function socials_stopWave(){
+  if(!socials_ws || !socials_region) return;
+  try{ socials_ws.stop(); }catch(_){}
+  socials_playing = false;
+  if(socials_playTimer){ clearInterval(socials_playTimer); socials_playTimer = null; }
+  socials_ws.seekTo(socials_duration>0 ? (socials_region.start/socials_duration) : 0);
+}
 </script>
 </body>
 </html>
