@@ -664,6 +664,406 @@ def merge_clips():
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 # ------------------------------------------------------------
+# Socials Animations
+# ------------------------------------------------------------
+SOCIALS_IMAGE_EXTS = {".jpg", ".jpeg", ".png"}
+SOCIALS_W, SOCIALS_H = 1080, 1920
+SOCIALS_FG_W = int(SOCIALS_W * 0.68)  # 734
+SOCIALS_FG_W -= SOCIALS_FG_W % 2
+SOCIALS_PAD = 40  # shadow padding around the square
+SOCIALS_BG_OVERSIZE = 1.4  # for pan animations: 1.4x of frame -> 2688 wide
+SOCIALS_BG_PAN_W = int(SOCIALS_W * SOCIALS_BG_OVERSIZE)
+SOCIALS_BG_PAN_W -= SOCIALS_BG_PAN_W % 2  # 1512
+SOCIALS_BG_PAN_FILL = int(SOCIALS_H * SOCIALS_BG_OVERSIZE)
+SOCIALS_BG_PAN_FILL -= SOCIALS_BG_PAN_FILL % 2  # 2688
+
+
+def _socials_session_dir(session_id: str) -> Path:
+    d = UPLOAD_DIR / session_id / "socials"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _socials_find_image(session_id: str) -> Optional[Path]:
+    d = _socials_session_dir(session_id)
+    for f in d.iterdir():
+        if f.is_file() and f.name.startswith("image_") and f.suffix.lower() in SOCIALS_IMAGE_EXTS:
+            return f
+    return None
+
+
+def _socials_find_audio(session_id: str) -> Optional[Path]:
+    d = _socials_session_dir(session_id)
+    for f in d.iterdir():
+        if f.is_file() and f.name.startswith("audio_") and f.suffix.lower() in AUDIO_EXTS:
+            return f
+    return None
+
+
+@app.route("/upload_socials_image", methods=["POST"])
+def upload_socials_image():
+    session_id = request.form.get("session_id") or str(uuid.uuid4())
+    f = request.files.get("image")
+    if not f or not f.filename:
+        return jsonify({"error": "No file provided"}), 400
+    ext = Path(f.filename).suffix.lower()
+    if ext not in SOCIALS_IMAGE_EXTS:
+        return jsonify({"error": f"Unsupported image type: {ext}"}), 400
+
+    d = _socials_session_dir(session_id)
+    # Clear any existing image
+    for old in d.glob("image_*"):
+        old.unlink(missing_ok=True)
+
+    save_path = d / f"image_{Path(f.filename).name}"
+    f.save(str(save_path))
+
+    try:
+        with Image.open(save_path) as img:
+            w, h = img.size
+    except Exception as e:
+        return jsonify({"error": f"Could not read image: {e}"}), 500
+
+    # Auto-rescale large square images to keep ffmpeg fast
+    if w == h and w >= 4000:
+        new_path = d / f"image_{Path(f.filename).stem}_2k{ext}"
+        with Image.open(save_path) as img:
+            img.resize((2000, 2000), Image.Resampling.LANCZOS).save(new_path, quality=95)
+        save_path.unlink(missing_ok=True)
+        save_path = new_path
+        w, h = 2000, 2000
+
+    return jsonify({
+        "session_id": session_id,
+        "filename": save_path.name,
+        "width": w, "height": h,
+        "is_square": (w == h),
+    })
+
+
+@app.route("/upload_socials_audio", methods=["POST"])
+def upload_socials_audio():
+    session_id = request.form.get("session_id") or str(uuid.uuid4())
+    f = request.files.get("audio")
+    if not f or not f.filename:
+        return jsonify({"error": "No audio file provided"}), 400
+    ext = Path(f.filename).suffix.lower()
+    if ext not in AUDIO_EXTS:
+        return jsonify({"error": f"Unsupported audio type: {ext}"}), 400
+
+    d = _socials_session_dir(session_id)
+    for old in d.glob("audio_*"):
+        old.unlink(missing_ok=True)
+
+    save_path = d / f"audio_{Path(f.filename).name}"
+    f.save(str(save_path))
+
+    try:
+        dur = audio_duration(save_path)
+    except Exception:
+        dur = 0.0
+
+    return jsonify({
+        "session_id": session_id,
+        "filename": save_path.name,
+        "duration": dur,
+    })
+
+
+def _socials_build_filter(
+    bg_treatment: str,
+    animation: str,
+    strobe_op: float,
+    pan_dur: float,
+    duration: float,
+    strobe_zoom: float = 1.0,
+    strobe_offset_x: float = 0.0,
+    strobe_offset_y: float = 0.0,
+) -> str:
+    """
+    Build the ffmpeg filter_complex string for the socials render.
+    Single image input on [0:v]. Output label: [outv].
+
+    For strobe mode, the strobe overlay is composited BEHIND the foreground square
+    (over the background only). strobe_zoom (>=1.0) and strobe_offset_x/y (-1..1)
+    let the user reframe the background; the constraint that bg height >= frame
+    height is enforced by clamping zoom to >= 1.0.
+    """
+    bg_w, bg_h = SOCIALS_W, SOCIALS_H
+    fg_w = SOCIALS_FG_W
+    pad = SOCIALS_PAD
+    shadow_outer = fg_w + pad * 2  # 814 for fg=734
+
+    # 1) Background: scale to fill 9:16 (cover) then crop. For pan, oversize to 1.4x.
+    is_pan = animation in ("horizontal", "diagonal", "diamond")
+    is_strobe = (animation == "strobe")
+
+    if is_pan:
+        # Oversized square fill so we have headroom to pan in any direction
+        bg_chain = (
+            f"[0:v]scale={SOCIALS_BG_PAN_FILL}:{SOCIALS_BG_PAN_FILL}:"
+            f"force_original_aspect_ratio=increase,"
+            f"crop={SOCIALS_BG_PAN_FILL}:{SOCIALS_BG_PAN_FILL}"
+        )
+    elif is_strobe:
+        # Strobe mode: build a bg sized to cover 9:16 at the user's zoom factor,
+        # then crop a 1080x1920 window with offset. Zoom is clamped >= 1.0 so
+        # height is never less than the frame height.
+        z = max(1.0, min(3.0, strobe_zoom))
+        # Scale so the SHORTER edge of the bg equals (frame_short * z); the longer
+        # edge will be larger. Using force_original_aspect_ratio=increase against
+        # bg_w x bg_h scaled by z gives exactly that.
+        sw = int(round(bg_w * z));  sw -= sw % 2
+        sh = int(round(bg_h * z));  sh -= sh % 2
+        bg_chain = (
+            f"[0:v]scale={sw}:{sh}:force_original_aspect_ratio=increase"
+        )
+    else:
+        bg_chain = (
+            f"[0:v]scale={bg_w}:{bg_h}:force_original_aspect_ratio=increase,"
+            f"crop={bg_w}:{bg_h}"
+        )
+
+    # Background treatment
+    if bg_treatment == "inverted":
+        bg_chain += ",negate"
+    elif bg_treatment == "bw":
+        bg_chain += ",hue=s=0"
+
+    # For strobe with zoom/offset, append the offset crop now (after treatment).
+    if is_strobe:
+        # Slack between scaled bg and the 1080x1920 window. We can't know the
+        # post-aspect-ratio scaled size without ffprobe; use ffmpeg expressions.
+        # iw/ih here refer to the chain INPUT, which is the original [0:v].
+        # After scale=force_original_aspect_ratio=increase, the actual pixel
+        # dimensions depend on input aspect. Use `ow`/`oh` would be wrong inside
+        # crop since they reference the crop output. Easiest: do scale-with-pad
+        # to a known size first.
+        #
+        # Simpler approach: scale square-ish input to a known oversize box, then
+        # crop with explicit slack. We'll use a target size of (bg_w*z, bg_h*z)
+        # using force_original_aspect_ratio=increase, then crop bg_w:bg_h with
+        # an offset based on (in_w-bg_w) and (in_h-bg_h).
+        ox = max(-1.0, min(1.0, strobe_offset_x))
+        oy = max(-1.0, min(1.0, strobe_offset_y))
+        # x,y offset expressed using crop's `in_w`/`in_h` (= the scaled bg dims).
+        # Centre is (in_w-bg_w)/2; user offset shifts within ±centre.
+        x_expr_s = f"(in_w-{bg_w})/2 + ({ox})*(in_w-{bg_w})/2"
+        y_expr_s = f"(in_h-{bg_h})/2 + ({oy})*(in_h-{bg_h})/2"
+        bg_chain += f",crop={bg_w}:{bg_h}:'{x_expr_s}':'{y_expr_s}'"
+
+    bg_chain += "[bg]"
+
+    # 2) Foreground square (centred, fg_w x fg_w)
+    fg_chain = f"[0:v]scale={fg_w}:{fg_w}:force_original_aspect_ratio=increase,crop={fg_w}:{fg_w}[fg]"
+
+    # 3) Shadow: black square the same size as fg, padded by `pad` on each side, gblur
+    shadow_chain = (
+        f"color=c=black@0.55:s={fg_w}x{fg_w}:d={duration:.3f},"
+        f"pad={shadow_outer}:{shadow_outer}:{pad}:{pad}:color=black@0.0,"
+        f"gblur=sigma=20[shadow]"
+    )
+
+    # 4) Pan: crop the oversized bg with a moving window
+    max_dx = SOCIALS_BG_PAN_FILL - bg_w   # e.g. 2688-1080 = 1608
+    max_dy = SOCIALS_BG_PAN_FILL - bg_h   # e.g. 2688-1920 = 768
+    cx = max_dx / 2.0
+    cy = max_dy / 2.0
+    ax = max_dx / 2.0
+    ay = max_dy / 2.0
+    omega = f"(2*PI*t/{pan_dur})"
+
+    if animation == "horizontal":
+        x_expr = f"({cx})+({ax})*sin({omega})"
+        y_expr = f"{cy}"
+    elif animation == "diagonal":
+        x_expr = f"({cx})+({ax})*sin({omega})"
+        y_expr = f"({cy})+({ay})*sin({omega})"
+    elif animation == "diamond":
+        # True diamond: triangle waves on x and y, 90° out of phase.
+        # tri(theta) = (2/PI)*asin(sin(theta)) -> ranges -1..+1 with linear edges,
+        # so the trace between extremes is a straight line, giving sharp diamond corners.
+        tri_x = f"(2/PI)*asin(sin({omega}))"
+        tri_y = f"(2/PI)*asin(sin({omega}-PI/2))"
+        x_expr = f"({cx})+({ax})*({tri_x})"
+        y_expr = f"({cy})+({ay})*({tri_y})"
+    else:
+        x_expr = y_expr = None
+
+    if is_pan:
+        bg_chain = bg_chain[:-len("[bg]")] + (
+            f",crop={bg_w}:{bg_h}:'{x_expr}':'{y_expr}'[bg]"
+        )
+
+    # 5) Compose
+    sx = (bg_w - shadow_outer) // 2
+    sy = (bg_h - shadow_outer) // 2
+    fx = (bg_w - fg_w) // 2
+    fy = (bg_h - fg_w) // 2
+
+    if is_strobe:
+        # Strobe goes BEHIND the foreground: [bg] -> overlay strobe -> overlay shadow -> overlay fg
+        op = max(0.0, min(1.0, strobe_op))
+        strobe = (
+            f"color=c=black:s={bg_w}x{bg_h}:d={duration:.3f},"
+            f"format=rgba,colorchannelmixer=aa={op:.3f}[sblk];"
+            f"color=c=white:s={bg_w}x{bg_h}:d={duration:.3f},"
+            f"format=rgba,colorchannelmixer=aa={op:.3f}[swht];"
+            f"[bg][sblk]overlay=0:0:enable='lt(mod(floor(t*10)\\,2)\\,1)'[bgs1];"
+            f"[bgs1][swht]overlay=0:0:enable='gte(mod(floor(t*10)\\,2)\\,1)'[bgstrobed];"
+            f"[bgstrobed][shadow]overlay={sx}:{sy}:format=auto[bgs2];"
+            f"[bgs2][fg]overlay={fx}:{fy}:format=auto[outv]"
+        )
+        return f"{bg_chain};{fg_chain};{shadow_chain};{strobe}"
+
+    # No strobe: bg -> shadow -> fg
+    compose = (
+        f"[bg][shadow]overlay={sx}:{sy}:format=auto[bgs];"
+        f"[bgs][fg]overlay={fx}:{fy}:format=auto[outv]"
+    )
+    return f"{bg_chain};{fg_chain};{shadow_chain};{compose}"
+
+
+def _run_socials_render_job(job_id: str, data: dict) -> None:
+    job = _read_job(job_id)
+    session_id = data.get("session_id", "")
+
+    try:
+        image_path = _socials_find_image(session_id)
+        if not image_path:
+            job["status"] = "error"; job["error"] = "No image uploaded."
+            _write_job(job_id, job); return
+
+        bg_treatment = (data.get("bg_treatment") or "normal").strip().lower()
+        if bg_treatment not in ("normal", "inverted", "bw"):
+            bg_treatment = "normal"
+        animation = (data.get("animation") or "none").strip().lower()
+        if animation not in ("none", "strobe", "horizontal", "diagonal", "diamond"):
+            animation = "none"
+        strobe_op = _safe_float(data.get("strobe_opacity"), 60.0) / 100.0
+        pan_dur = max(0.5, _safe_float(data.get("pan_duration"), 4.0))
+        strobe_zoom = max(1.0, min(3.0, _safe_float(data.get("strobe_zoom"), 1.0)))
+        strobe_off_x = max(-1.0, min(1.0, _safe_float(data.get("strobe_offset_x"), 0.0)))
+        strobe_off_y = max(-1.0, min(1.0, _safe_float(data.get("strobe_offset_y"), 0.0)))
+        output_format = (data.get("output_format") or "mp4").strip().lower()
+        if output_format not in ("mp4", "gif", "both"):
+            output_format = "mp4"
+
+        # Audio (optional). If present, audio segment drives the duration.
+        use_audio = bool(data.get("use_audio", False))
+        audio_path = _socials_find_audio(session_id) if use_audio else None
+        if use_audio and not audio_path:
+            job["status"] = "error"; job["error"] = "Audio enabled but no audio uploaded."
+            _write_job(job_id, job); return
+
+        if use_audio:
+            seg_len = max(0.5, _safe_float(data.get("segment_length_sec"), 15.0))
+            seg_start = max(0.0, _safe_float(data.get("segment_start_sec"), 0.0))
+            duration = seg_len
+        else:
+            seg_len = 0.0; seg_start = 0.0
+            duration = max(0.5, _safe_float(data.get("duration"), 8.0))
+
+        render_out = RENDER_DIR / session_id / "SOCIALS"
+        render_out.mkdir(parents=True, exist_ok=True)
+
+        # Plan outputs
+        targets: List[str] = []
+        if output_format in ("mp4", "both"): targets.append("mp4")
+        if output_format in ("gif", "both"): targets.append("gif")
+
+        job["total"] = len(targets)
+        job["videos"] = []
+        _write_job(job_id, job)
+        created = 0
+
+        # Build filter graph once — same for all targets
+        fc = _socials_build_filter(
+            bg_treatment, animation, strobe_op, pan_dur, duration,
+            strobe_zoom=strobe_zoom,
+            strobe_offset_x=strobe_off_x,
+            strobe_offset_y=strobe_off_y,
+        )
+
+        base_name = image_path.stem.replace("image_", "")
+        if base_name.endswith("_2k"):
+            base_name = base_name[:-3]
+
+        for fmt in targets:
+            if STOP_EVENT.is_set(): break
+            out_name = f"{base_name}_socials.{fmt}"
+            out_path = _next_available(render_out / out_name)
+            job["videos"].append({"name": out_path.name, "status": "rendering", "url": None})
+            _write_job(job_id, job)
+            v_idx = len(job["videos"]) - 1
+
+            # Inputs: image (looped), optional audio
+            cmd: List[str] = [FFMPEG, "-y", "-loop", "1", "-i", str(image_path)]
+            if use_audio and audio_path is not None:
+                cmd += ["-ss", f"{seg_start}", "-t", f"{seg_len}", "-i", str(audio_path)]
+
+            cmd += ["-filter_complex", fc, "-map", "[outv]"]
+
+            if fmt == "mp4":
+                if use_audio and audio_path is not None:
+                    cmd += ["-map", "1:a:0", "-c:a", "aac", "-b:a", "320k"]
+                cmd += [
+                    "-t", f"{duration}",
+                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+                    "-r", "30", "-pix_fmt", "yuv420p",
+                    "-movflags", "+faststart",
+                    str(out_path),
+                ]
+            else:  # gif — no audio
+                cmd += [
+                    "-t", f"{duration}",
+                    "-r", "20",
+                    "-loop", "0",
+                    str(out_path),
+                ]
+
+            p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            set_current_proc(p)
+            _, err = p.communicate()
+            set_current_proc(None)
+
+            if p.returncode == 0 and out_path.exists():
+                created += 1
+                job["videos"][v_idx]["status"] = "done"
+                job["videos"][v_idx]["url"] = f"/download/{session_id}/SOCIALS/{out_path.name}"
+            else:
+                job["videos"][v_idx]["status"] = "error"
+                job["videos"][v_idx]["error"] = (err or "")[-500:]
+            job["done"] = created
+            _write_job(job_id, job)
+
+        job["status"] = "done" if created > 0 else "error"
+        if created == 0:
+            job["error"] = job.get("error") or "Render failed. See per-output errors."
+        else:
+            job["message"] = f"Done. Created {created} output(s)."
+        _write_job(job_id, job)
+
+    except Exception as e:
+        job = _read_job(job_id) or job
+        job["status"] = "error"; job["error"] = str(e)
+        _write_job(job_id, job)
+
+
+@app.route("/render_socials", methods=["POST"])
+def render_socials():
+    STOP_EVENT.clear()
+    data = request.get_json(force=True) or {}
+    job_id = str(uuid.uuid4())
+    _write_job(job_id, {
+        "status": "running", "total": 0, "done": 0,
+        "videos": [], "message": "", "error": "", "zip_url": None,
+    })
+    threading.Thread(target=_run_socials_render_job, args=(job_id, data), daemon=True).start()
+    return jsonify({"ok": True, "job_id": job_id})
+
+
+# ------------------------------------------------------------
 # Download
 # ------------------------------------------------------------
 @app.route("/download/<session_id>/<path:filename>")

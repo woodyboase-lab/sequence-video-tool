@@ -149,19 +149,31 @@
     .preview-wrap{display:flex;align-items:center;justify-content:center;padding:20px;background:var(--surface2);border-radius:var(--radius-sm);min-height:480px;}
     .phone-frame{position:relative;width:240px;height:427px;border-radius:16px;overflow:hidden;background:#222;box-shadow:0 12px 40px rgba(0,0,0,0.6),0 0 0 1px rgba(255,255,255,0.04);}
     .phone-frame.empty::after{content:"Upload a square image to preview";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--text-dim);font-family:var(--mono);font-size:11px;text-align:center;padding:20px;}
-    .bg-layer{position:absolute;inset:-20%;background-size:140% 140%;background-position:center;transition:filter 0.3s;}
+    /* Background layer for the socials preview. JavaScript drives its width/height
+       and transform so the geometry exactly mirrors the export's filter graph
+       (no keyframe approximations). The element is positioned at the frame centre
+       via top:50% left:50% and the JS applies translate(-50%,-50%) plus any pan
+       offset baked in. */
+    .bg-layer{
+      position:absolute;
+      top:50%;left:50%;
+      background-size:cover;background-position:center;
+      transform:translate(-50%,-50%);
+      transform-origin:center center;
+      transition:filter 0.3s;
+      will-change:transform;
+    }
     .bg-layer.inverted{filter:invert(1);}
     .bg-layer.bw{filter:grayscale(1);}
     .strobe-layer{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;}
     .strobe-layer.active{animation:strobe 0.2s steps(1) infinite;}
     @keyframes strobe{0%,49%{background:#000;opacity:var(--strobe-op,0.6);}50%,100%{background:#fff;opacity:var(--strobe-op,0.6);}}
     .fg-square{position:absolute;width:68%;aspect-ratio:1;left:50%;top:50%;transform:translate(-50%,-50%);background-size:cover;background-position:center;box-shadow:0 0 40px 8px rgba(0,0,0,0.45);z-index:2;}
-    .bg-layer.pan-horizontal{animation:panH var(--pan-dur,4s) ease-in-out infinite alternate;}
-    .bg-layer.pan-diagonal{animation:panD var(--pan-dur,4s) ease-in-out infinite alternate;}
-    .bg-layer.pan-diamond{animation:panDia var(--pan-dur,4s) linear infinite;}
-    @keyframes panH{0%{background-position:0% center;}100%{background-position:100% center;}}
-    @keyframes panD{0%{background-position:0% 0%;}100%{background-position:100% 100%;}}
-    @keyframes panDia{0%{background-position:50% 0%;}25%{background-position:100% 50%;}50%{background-position:50% 100%;}75%{background-position:0% 50%;}100%{background-position:50% 0%;}}
+    .path-shape-group{display:flex;gap:8px;}
+    .path-shape-btn{display:inline-flex;align-items:center;justify-content:center;width:56px;height:48px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:8px;color:#888;cursor:pointer;transition:all 0.15s;padding:0;}
+    .path-shape-btn:hover{background:#222;color:#ccc;border-color:#3a3a3a;}
+    .path-shape-btn.active{background:#e8ff47;color:#000;border-color:#e8ff47;}
+    .path-shape-btn svg{display:block;}
     .preview-meta{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--surface2);border-radius:var(--radius-sm);font-family:var(--mono);font-size:10px;color:var(--text-muted);margin-top:10px;}
     .preview-meta .v{color:var(--accent);}
   </style>
@@ -223,14 +235,48 @@
         <div class="pill-group" id="socialsAnimType">
           <div class="pill active" data-v="none">None</div>
           <div class="pill" data-v="strobe">Strobe</div>
-          <div class="pill" data-v="horizontal">Pan &mdash; Horizontal</div>
-          <div class="pill" data-v="diagonal">Pan &mdash; Diagonal</div>
-          <div class="pill" data-v="diamond">Pan &mdash; Diamond</div>
+          <div class="pill" data-v="pan">Pan</div>
+        </div>
+
+        <div id="socialsPathShapes" class="hidden" style="margin-top:14px;">
+          <div class="card-label" style="margin-bottom:8px;">Path Shape</div>
+          <div class="path-shape-group" id="socialsPanShape">
+            <button class="path-shape-btn active" data-v="horizontal" title="Horizontal">
+              <svg viewBox="0 0 48 24" width="40" height="20" aria-hidden="true">
+                <line x1="8" y1="12" x2="40" y2="12" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+                <polyline points="12,7 7,12 12,17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+                <polyline points="36,7 41,12 36,17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+            <button class="path-shape-btn" data-v="diagonal" title="Diagonal">
+              <svg viewBox="0 0 32 32" width="32" height="32" aria-hidden="true">
+                <line x1="7" y1="25" x2="25" y2="7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+                <polyline points="7,18 7,25 14,25" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+                <polyline points="18,7 25,7 25,14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+            <button class="path-shape-btn" data-v="diamond" title="Diamond">
+              <svg viewBox="0 0 32 32" width="32" height="32" aria-hidden="true">
+                <polygon points="16,5 27,16 16,27 5,16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/>
+                <line x1="16" y1="16" x2="16" y2="6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+                <polyline points="12,9 16,5 20,9" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+          </div>
         </div>
 
         <div id="socialsStrobeControls" class="hidden" style="margin-top:16px;">
           <div class="slider-row"><span>Strobe intensity</span><span class="val" id="socialsStrobeOpVal">60%</span></div>
           <input type="range" min="10" max="100" value="60" id="socialsStrobeOp">
+
+          <div class="slider-row" style="margin-top:14px;"><span>Background zoom</span><span class="val" id="socialsStrobeZoomVal">1.0&times;</span></div>
+          <input type="range" min="100" max="300" value="100" id="socialsStrobeZoom">
+
+          <div class="slider-row" style="margin-top:14px;"><span>Background X</span><span class="val" id="socialsStrobeOffXVal">0%</span></div>
+          <input type="range" min="-100" max="100" value="0" id="socialsStrobeOffX">
+
+          <div class="slider-row" style="margin-top:14px;"><span>Background Y</span><span class="val" id="socialsStrobeOffYVal">0%</span></div>
+          <input type="range" min="-100" max="100" value="0" id="socialsStrobeOffY">
         </div>
 
         <div id="socialsPanControls" class="hidden" style="margin-top:16px;">
@@ -336,8 +382,8 @@
     <div class="upload-zone" id="audioZone">
       <input type="file" id="audioFiles" accept=".wav,.aif,.aiff,.mp3" multiple onchange="onAudioSelected()">
       <span class="uz-icon">&#127925;</span>
-      <div class="uz-title">Click to select your audio folder</div>
-      <div class="uz-sub">Select the whole folder &#8212; WAV, AIF, MP3 supported</div>
+      <div class="uz-title">Click to select audio</div>
+      <div class="uz-sub">Select all wanted audio files &#8212; WAV, AIF, MP3 supported</div>
     </div>
     <div class="file-info" id="audioInfo">
       <span class="fi-dot"></span><span class="fi-name" id="audioInfoName"></span>
@@ -529,8 +575,8 @@ async function onAudioSelected(){
 function clearAudio(){
   audioUploaded=false;document.getElementById("audioFiles").value="";
   const z=document.getElementById("audioZone");z.classList.remove("has-file");
-  z.querySelector(".uz-title").textContent="Click to select your audio folder";
-  z.querySelector(".uz-sub").textContent="Select all your audio files — WAV, AIF, MP3 supported. Use Cmd+A to select all at once.";
+  z.querySelector(".uz-title").textContent="Click to select audio";
+  z.querySelector(".uz-sub").textContent="Select all wanted audio files — WAV, AIF, MP3 supported. Use Cmd+A to select all at once.";
   hideFileInfo("audio");setBadge("audioBadge","—","");resetInspect();
 }
 
@@ -611,6 +657,8 @@ function updateMergeBtn(){document.getElementById("mergeBtn").classList.toggle("
 function setRunning(on){
   document.getElementById("startBtn").disabled=on;document.getElementById("stopBtn").disabled=!on;
   document.getElementById("startBtnLabel").textContent=on?"Rendering...":"Start rendering";
+  const sb=document.getElementById("socialsStartBtn");
+  if(sb){sb.disabled = on || (typeof socialsState!=="undefined" && !socialsState.imageUploaded); sb.textContent = on?"Rendering...":"Start rendering";}
   if(on){const s=document.getElementById("renderStatus");s.className="status-line working";s.innerHTML='<span class="spinner"></span> Rendering — this may take a few minutes...';document.getElementById("downloadList").innerHTML="";document.getElementById("renderOutput").classList.add("visible");}
 }
 function showError(msg){const s=document.getElementById("renderStatus");s.className="status-line err";s.textContent=msg;document.getElementById("renderOutput").classList.add("visible");}
@@ -840,9 +888,15 @@ function clampStart(start,segLen,dur){if(!dur||dur<=0)return 0;return Math.min(M
 let socialsState = {
   imageUploaded: false,
   imageDataUrl: null,
+  imageW: 0,
+  imageH: 0,
   bgTreatment: "normal",
   animation: "none",
+  panShape: "horizontal",
   strobeOpacity: 60,
+  strobeZoom: 1.0,
+  strobeOffsetX: 0,
+  strobeOffsetY: 0,
   panDuration: 4,
   duration: 8,
   outputFormat: "mp4",
@@ -855,14 +909,30 @@ async function onSocialsImageSelected(){
   const file = document.getElementById("socialsImageFile").files[0];
   if(!file) return;
   showProgress("socialsImage", 0, "Uploading...");
-  // Read file for preview (doesn't need server yet)
+  // Local preview while uploading
   const reader = new FileReader();
   reader.onload = (e) => {
     socialsState.imageDataUrl = e.target.result;
-    socialsState.imageUploaded = true;
     document.getElementById("socialsBgLayer").style.backgroundImage = `url(${e.target.result})`;
     document.getElementById("socialsFgSquare").style.backgroundImage = `url(${e.target.result})`;
     document.getElementById("socialsPhoneFrame").classList.remove("empty");
+  };
+  reader.readAsDataURL(file);
+
+  // Upload to server
+  try{
+    const fd = new FormData();
+    fd.append("session_id", SESSION_ID);
+    fd.append("image", file);
+    showProgress("socialsImage", 50, "Uploading...");
+    const r = await fetch("/upload_socials_image", {method:"POST", body:fd});
+    const txt = await r.text();
+    if(!r.ok) throw new Error(txt);
+    const result = JSON.parse(txt);
+    socialsState.imageUploaded = true;
+    socialsState.imageServerName = result.filename;
+    socialsState.imageW = result.width || 0;
+    socialsState.imageH = result.height || 0;
     const z = document.getElementById("socialsImageZone");
     z.classList.add("has-file");
     z.querySelector(".uz-title").textContent = file.name;
@@ -871,17 +941,25 @@ async function onSocialsImageSelected(){
     setBadge("socialsImageBadge", "READY", "green");
     hideProgress("socialsImage");
     updateSocialsStartBtn();
-  };
-  reader.onerror = () => { hideProgress("socialsImage"); showError("Failed to read image."); };
-  showProgress("socialsImage", 50, "Processing...");
-  reader.readAsDataURL(file);
+    // Re-apply current animation now that we have image dims
+    applySocialsAnimation();
+  }catch(e){
+    hideProgress("socialsImage");
+    showError("Upload failed: " + (e.message || e));
+    socialsState.imageUploaded = false;
+    updateSocialsStartBtn();
+  }
 }
 
 function clearSocialsImage(){
   socialsState.imageUploaded = false;
   socialsState.imageDataUrl = null;
+  socialsState.imageW = 0;
+  socialsState.imageH = 0;
+  if(socialsPanRaf){ cancelAnimationFrame(socialsPanRaf); socialsPanRaf = null; }
   document.getElementById("socialsImageFile").value = "";
   document.getElementById("socialsBgLayer").style.backgroundImage = "";
+  document.getElementById("socialsBgLayer").style.transform = "translate(-50%,-50%)";
   document.getElementById("socialsFgSquare").style.backgroundImage = "";
   document.getElementById("socialsPhoneFrame").classList.add("empty");
   const z = document.getElementById("socialsImageZone");
@@ -895,6 +973,125 @@ function clearSocialsImage(){
 
 function updateSocialsStartBtn(){
   document.getElementById("socialsStartBtn").disabled = !socialsState.imageUploaded;
+}
+
+// Frame dimensions in preview units (must match the .phone-frame CSS — 240x427).
+// Export targets 1080x1920; preview scale factor = 240/1080 = 1/4.5 ≈ 0.2222.
+const SOCIALS_FRAME_W = 240;
+const SOCIALS_FRAME_H = 427;
+const SOCIALS_PREVIEW_SCALE = SOCIALS_FRAME_W / 1080; // pixels-per-export-pixel
+
+// rAF handle for pan animation
+let socialsPanRaf = null;
+let socialsPanT0 = 0;
+
+function socialsImageDims(){
+  // Fall back to a square if no image yet — keeps the layer reasonable in the empty state
+  let w = socialsState.imageW || 0;
+  let h = socialsState.imageH || 0;
+  if(w <= 0 || h <= 0){ w = 1; h = 1; }
+  return {w, h};
+}
+
+// Compute the preview bg-layer dimensions (in preview pixels) that mirror the export's
+// pre-crop scaled bg, given a target export box (boxW x boxH) and the input image aspect.
+// Mirrors `scale=boxW:boxH:force_original_aspect_ratio=increase` exactly.
+function socialsScaledBgDims(boxW, boxH){
+  const {w: iw, h: ih} = socialsImageDims();
+  // Match force_original_aspect_ratio=increase: scale by max(boxW/iw, boxH/ih)
+  const k = Math.max(boxW / iw, boxH / ih);
+  const sw = iw * k;
+  const sh = ih * k;
+  // Convert from export pixels to preview pixels
+  return {w: sw * SOCIALS_PREVIEW_SCALE, h: sh * SOCIALS_PREVIEW_SCALE};
+}
+
+function applySocialsBg(){
+  const bg = document.getElementById("socialsBgLayer");
+  if(!bg) return;
+  const a = socialsState.animation;
+
+  // Cancel any running pan animation
+  if(socialsPanRaf){ cancelAnimationFrame(socialsPanRaf); socialsPanRaf = null; }
+
+  if(a === "strobe"){
+    // Export: scale=1080*z x 1920*z with force_original_aspect_ratio=increase, then
+    // crop 1080x1920 with offset = ±ox*(in_w-1080)/2, ±oy*(in_h-1920)/2.
+    const z  = Math.max(1.0, Math.min(3.0, socialsState.strobeZoom || 1.0));
+    const ox = Math.max(-1, Math.min(1, socialsState.strobeOffsetX || 0));
+    const oy = Math.max(-1, Math.min(1, socialsState.strobeOffsetY || 0));
+    const {w: bgW, h: bgH} = socialsScaledBgDims(1080 * z, 1920 * z);
+    bg.style.width = bgW + "px";
+    bg.style.height = bgH + "px";
+    // Slack between scaled bg and the 240x427 frame, in preview pixels
+    const slackX = (bgW - SOCIALS_FRAME_W) / 2;
+    const slackY = (bgH - SOCIALS_FRAME_H) / 2;
+    // Export window offset = +ox * slackX (to the right of bg). To show that part of the bg,
+    // the bg needs to translate LEFT in the frame, hence -ox.
+    const tx = -ox * slackX;
+    const ty = -oy * slackY;
+    bg.style.transform = `translate(calc(-50% + ${tx}px), calc(-50% + ${ty}px))`;
+    return;
+  }
+
+  if(a === "pan"){
+    // Export: scale=2688:2688:force_original_aspect_ratio=increase, crop=2688:2688
+    // -> a SQUARE bg of 2688x2688 (bleed cropped centred). Then crop 1080x1920 with
+    // moving x/y. Mirror in preview by setting bg to a square in preview units and
+    // letting background-size:cover on a square layer reproduce the centred-crop
+    // behaviour for non-square images.
+    const bgSquare = 2688 * SOCIALS_PREVIEW_SCALE;  // ~597.33px in preview units
+    bg.style.width = bgSquare + "px";
+    bg.style.height = bgSquare + "px";
+
+    // Slack of the 240x427 window inside the bgSquare canvas
+    const slackX = (bgSquare - SOCIALS_FRAME_W) / 2;
+    const slackY = (bgSquare - SOCIALS_FRAME_H) / 2;
+    const dur = Math.max(0.5, socialsState.panDuration || 4);
+    const shape = socialsState.panShape || "horizontal";
+
+    socialsPanT0 = performance.now();
+
+    const tick = (now) => {
+      const t = (now - socialsPanT0) / 1000;
+      const omega = 2 * Math.PI * (t / dur);
+      let wx = 0, wy = 0; // window position in [-1, +1]
+      if(shape === "horizontal"){
+        wx = Math.sin(omega);
+        wy = 0;
+      }else if(shape === "diagonal"){
+        wx = Math.sin(omega);
+        wy = Math.sin(omega);
+      }else if(shape === "diamond"){
+        // Triangle wave (matches export's (2/PI)*asin(sin(...)))
+        wx = (2/Math.PI) * Math.asin(Math.sin(omega));
+        wy = (2/Math.PI) * Math.asin(Math.sin(omega - Math.PI/2));
+      }
+      // Window goes wx*slackX to the right -> bg translates LEFT by wx*slackX
+      const tx = -wx * slackX;
+      const ty = -wy * slackY;
+      bg.style.transform = `translate(calc(-50% + ${tx}px), calc(-50% + ${ty}px))`;
+      socialsPanRaf = requestAnimationFrame(tick);
+    };
+    socialsPanRaf = requestAnimationFrame(tick);
+    return;
+  }
+
+  // None: bg covers the frame at scale 1 (matches the no-anim export which is just
+  // scale=1080:1920:force_original_aspect_ratio=increase, crop=1080:1920).
+  const {w: bgW, h: bgH} = socialsScaledBgDims(1080, 1920);
+  bg.style.width = bgW + "px";
+  bg.style.height = bgH + "px";
+  bg.style.transform = "translate(-50%, -50%)";
+}
+
+function applySocialsAnimation(){
+  const bg = document.getElementById("socialsBgLayer");
+  const strobe = document.getElementById("socialsStrobeLayer");
+  if(!bg || !strobe) return;
+  strobe.classList.remove("active");
+  if(socialsState.animation === "strobe") strobe.classList.add("active");
+  applySocialsBg();
 }
 
 function socialsSetupPills(groupId, onChange){
@@ -921,16 +1118,20 @@ window.addEventListener("load", () => {
 
   socialsSetupPills("socialsAnimType", v => {
     socialsState.animation = v;
-    const bg = document.getElementById("socialsBgLayer");
-    const strobe = document.getElementById("socialsStrobeLayer");
-    bg.classList.remove("pan-horizontal","pan-diagonal","pan-diamond");
-    strobe.classList.remove("active");
     document.getElementById("socialsStrobeControls").classList.toggle("hidden", v!=="strobe");
-    document.getElementById("socialsPanControls").classList.toggle("hidden", !["horizontal","diagonal","diamond"].includes(v));
-    if(v==="strobe") strobe.classList.add("active");
-    if(v==="horizontal") bg.classList.add("pan-horizontal");
-    if(v==="diagonal") bg.classList.add("pan-diagonal");
-    if(v==="diamond") bg.classList.add("pan-diamond");
+    document.getElementById("socialsPanControls").classList.toggle("hidden", v!=="pan");
+    document.getElementById("socialsPathShapes").classList.toggle("hidden", v!=="pan");
+    applySocialsAnimation();
+  });
+
+  // Path-shape sub-buttons (only relevant when animation === "pan")
+  document.querySelectorAll("#socialsPanShape .path-shape-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("#socialsPanShape .path-shape-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      socialsState.panShape = btn.dataset.v;
+      applySocialsAnimation();
+    });
   });
 
   socialsSetupPills("socialsOutputFormat", v => {
@@ -945,10 +1146,27 @@ window.addEventListener("load", () => {
     document.documentElement.style.setProperty("--strobe-op", e.target.value/100);
   });
 
+  document.getElementById("socialsStrobeZoom").addEventListener("input", e => {
+    socialsState.strobeZoom = parseInt(e.target.value) / 100;
+    document.getElementById("socialsStrobeZoomVal").textContent = socialsState.strobeZoom.toFixed(2) + "\u00d7";
+    applySocialsBg();
+  });
+  document.getElementById("socialsStrobeOffX").addEventListener("input", e => {
+    socialsState.strobeOffsetX = parseInt(e.target.value) / 100;
+    document.getElementById("socialsStrobeOffXVal").textContent = e.target.value + "%";
+    applySocialsBg();
+  });
+  document.getElementById("socialsStrobeOffY").addEventListener("input", e => {
+    socialsState.strobeOffsetY = parseInt(e.target.value) / 100;
+    document.getElementById("socialsStrobeOffYVal").textContent = e.target.value + "%";
+    applySocialsBg();
+  });
+
   document.getElementById("socialsPanDur").addEventListener("input", e => {
     socialsState.panDuration = parseInt(e.target.value);
     document.getElementById("socialsPanDurVal").textContent = e.target.value + "s";
     document.documentElement.style.setProperty("--pan-dur", e.target.value + "s");
+    if(socialsState.animation === "pan") applySocialsBg();
   });
 
   document.getElementById("socialsDur").addEventListener("input", e => {
@@ -961,19 +1179,61 @@ window.addEventListener("load", () => {
 });
 
 async function startSocialsRender(){
-  // Backend not wired up yet — placeholder
-  const audioInfo = socialsState.audioFile
-    ? socialsState.audioFile.name + " (" + socials_getSegLen() + "s segment from " + (document.getElementById("socialsSegStart").value || "00:00") + ")"
-    : "no";
-  const effectiveDuration = socialsState.audioFile ? socials_getSegLen() + "s (from audio)" : socialsState.duration + "s";
-  alert("Backend rendering not yet implemented.\n\nYour settings:\n" +
-    "- Background: " + socialsState.bgTreatment + "\n" +
-    "- Animation: " + socialsState.animation + "\n" +
-    (socialsState.animation==="strobe" ? "- Strobe intensity: " + socialsState.strobeOpacity + "%\n" : "") +
-    (["horizontal","diagonal","diamond"].includes(socialsState.animation) ? "- Pan duration: " + socialsState.panDuration + "s\n" : "") +
-    "- Duration: " + effectiveDuration + "\n" +
-    "- Audio: " + audioInfo + "\n" +
-    "- Format: " + socialsState.outputFormat);
+  if(!socialsState.imageUploaded){ showError("Please upload an image first."); return; }
+  document.getElementById("renderStatus").className = "status-line";
+  document.getElementById("downloadList").innerHTML = "";
+  document.getElementById("videoProgressList").innerHTML = "";
+  document.getElementById("videoProgressList").classList.add("hidden");
+  document.getElementById("overallProgress").classList.add("hidden");
+  setRunning(true);
+
+  try{
+    const useAudio = !!socialsState.audioFile && !!socialsState.audioServerName;
+    let segStart = 0, segLen = 0;
+    if(useAudio){
+      const sec = mmssToSecs(document.getElementById("socialsSegStart").value || "00:00");
+      segStart = sec === null ? 0 : sec;
+      segLen = socials_getSegLen();
+    }
+
+    // Backend expects animation values: none|strobe|horizontal|diagonal|diamond.
+    // The UI groups the three pans under one "pan" pill + a path-shape selector, so resolve here.
+    const resolvedAnim = (socialsState.animation === "pan")
+      ? (socialsState.panShape || "horizontal")
+      : socialsState.animation;
+
+    const payload = {
+      session_id: SESSION_ID,
+      bg_treatment: socialsState.bgTreatment,
+      animation: resolvedAnim,
+      strobe_opacity: socialsState.strobeOpacity,
+      strobe_zoom: socialsState.strobeZoom,
+      strobe_offset_x: socialsState.strobeOffsetX,
+      strobe_offset_y: socialsState.strobeOffsetY,
+      pan_duration: socialsState.panDuration,
+      duration: socialsState.duration,
+      output_format: socialsState.outputFormat,
+      use_audio: useAudio,
+      segment_start_sec: segStart,
+      segment_length_sec: segLen,
+    };
+
+    const r = await fetch("/render_socials", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(payload),
+    });
+    const txt = await r.text();
+    if(!r.ok) throw new Error(txt);
+    const result = JSON.parse(txt);
+    if(result.job_id){
+      currentJobId = result.job_id;
+      startProgressPolling(result.job_id);
+    }
+  }catch(e){
+    showError(e.message || e);
+    setRunning(false);
+  }
 }
 
 function onSocialsAudioToggle(){
@@ -984,7 +1244,7 @@ function onSocialsAudioToggle(){
   if(!on) clearSocialsAudio();
 }
 
-function onSocialsAudioSelected(){
+async function onSocialsAudioSelected(){
   const file = document.getElementById("socialsAudioFile").files[0];
   if(!file) return;
   socialsState.audioFile = file;
@@ -994,14 +1254,31 @@ function onSocialsAudioSelected(){
   const z = document.getElementById("socialsAudioZone");
   z.classList.add("has-file");
   z.querySelector(".uz-title").textContent = file.name;
-  z.querySelector(".uz-sub").textContent = "Ready";
+  z.querySelector(".uz-sub").textContent = "Uploading...";
   showFileInfo("socialsAudio", file.name, (file.size/1024/1024).toFixed(1) + " MB");
   document.getElementById("socialsSegmentControls").classList.remove("hidden");
   socials_initWave();
+
+  // Upload to server in the background
+  try{
+    const fd = new FormData();
+    fd.append("session_id", SESSION_ID);
+    fd.append("audio", file);
+    const r = await fetch("/upload_socials_audio", {method:"POST", body:fd});
+    const txt = await r.text();
+    if(!r.ok) throw new Error(txt);
+    const result = JSON.parse(txt);
+    socialsState.audioServerName = result.filename;
+    z.querySelector(".uz-sub").textContent = "Ready";
+  }catch(e){
+    z.querySelector(".uz-sub").textContent = "Upload failed";
+    showError("Audio upload failed: " + (e.message || e));
+  }
 }
 
 function clearSocialsAudio(){
   socialsState.audioFile = null;
+  socialsState.audioServerName = null;
   if(socialsState.audioBlobUrl){ URL.revokeObjectURL(socialsState.audioBlobUrl); socialsState.audioBlobUrl = null; }
   document.getElementById("socialsAudioFile").value = "";
   const z = document.getElementById("socialsAudioZone");
