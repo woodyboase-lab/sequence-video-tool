@@ -770,6 +770,59 @@ def upload_socials_audio():
     })
 
 
+def _socials_overlay_chain(overlays: list, in_label: str, out_label: str, duration: float) -> str:
+    """
+    Build filter segments applying background overlays in sequence.
+    [in_label] → … → [out_label], all at 1080×1920.
+    Returns a semicolon-joined string (no leading/trailing semicolons).
+    """
+    if not overlays:
+        return f"[{in_label}]copy[{out_label}]"
+
+    bw, bh = SOCIALS_W, SOCIALS_H
+    parts: List[str] = []
+    cur = in_label
+
+    for i, ov in enumerate(overlays):
+        nxt = out_label if i == len(overlays) - 1 else f"ov{i}"
+        t = (ov.get("type") or "").lower()
+
+        if t == "blur":
+            n = max(5, min(100, int(_safe_float(ov.get("intensity"), 40))))
+            sigma = round(n * 0.25, 1)   # 5→1.25, 100→25
+            parts.append(f"[{cur}]gblur=sigma={sigma}[{nxt}]")
+
+        elif t == "grain":
+            n = max(5, min(100, int(_safe_float(ov.get("intensity"), 35))))
+            parts.append(f"[{cur}]noise=alls={int(n*0.6)}:allf=t+u[{nxt}]")
+
+        elif t == "glitch":
+            n = max(5, min(100, int(_safe_float(ov.get("intensity"), 50))))
+            shift = max(1, int(round(n * 0.30)))
+            parts.append(f"[{cur}]format=rgba,rgbashift=rh={shift}:rv=0:bh=-{shift}:bv=0[{nxt}]")
+
+        elif t == "vignette":
+            n = max(10, min(100, int(_safe_float(ov.get("strength"), 60))))
+            angle = 3.1416 / 5.0 + (3.1416 / 2.5 - 3.1416 / 5.0) * (n / 100.0)
+            parts.append(f"[{cur}]vignette={angle:.4f}[{nxt}]")
+
+        elif t == "scanlines":
+            n = max(10, min(100, int(_safe_float(ov.get("intensity"), 50))))
+            mult = round(1.0 - n / 200.0, 3)
+            parts.append(
+                f"[{cur}]geq="
+                f"lum='lum(X\\,Y)*if(mod(Y\\,3)\\,1\\,{mult})'"
+                f":cb='cb(X\\,Y)':cr='cr(X\\,Y)'[{nxt}]"
+            )
+
+        else:
+            parts.append(f"[{cur}]copy[{nxt}]")
+
+        cur = nxt
+
+    return ";".join(parts)
+
+
 def _socials_build_filter(
     bg_treatment: str,
     animation: str,
@@ -779,6 +832,7 @@ def _socials_build_filter(
     strobe_zoom: float = 1.0,
     strobe_offset_x: float = 0.0,
     strobe_offset_y: float = 0.0,
+    overlays: Optional[list] = None,
 ) -> str:
     """
     Build the ffmpeg filter_complex string for the socials render.
@@ -901,8 +955,9 @@ def _socials_build_filter(
     fx = (bg_w - fg_w) // 2
     fy = (bg_h - fg_w) // 2
 
+    ovl = overlays or []
+
     if is_strobe:
-        # Strobe goes BEHIND the foreground: [bg] -> overlay strobe -> overlay shadow -> overlay fg
         op = max(0.0, min(1.0, strobe_op))
         strobe = (
             f"color=c=black:s={bg_w}x{bg_h}:d={duration:.3f},"
@@ -910,18 +965,91 @@ def _socials_build_filter(
             f"color=c=white:s={bg_w}x{bg_h}:d={duration:.3f},"
             f"format=rgba,colorchannelmixer=aa={op:.3f}[swht];"
             f"[bg][sblk]overlay=0:0:enable='lt(mod(floor(t*10)\\,2)\\,1)'[bgs1];"
-            f"[bgs1][swht]overlay=0:0:enable='gte(mod(floor(t*10)\\,2)\\,1)'[bgstrobed];"
-            f"[bgstrobed][shadow]overlay={sx}:{sy}:format=auto[bgs2];"
+            f"[bgs1][swht]overlay=0:0:enable='gte(mod(floor(t*10)\\,2)\\,1)'[bgstrobed]"
+        )
+        ov_chain = _socials_overlay_chain(ovl, "bgstrobed", "bgo", duration)
+        compose = (
+            f"[bgo][shadow]overlay={sx}:{sy}:format=auto[bgs2];"
             f"[bgs2][fg]overlay={fx}:{fy}:format=auto[outv]"
         )
-        return f"{bg_chain};{fg_chain};{shadow_chain};{strobe}"
+        return f"{bg_chain};{fg_chain};{shadow_chain};{strobe};{ov_chain};{compose}"
 
-    # No strobe: bg -> shadow -> fg
+    # No strobe: bg → overlays → shadow → fg
+    ov_chain = _socials_overlay_chain(ovl, "bg", "bgo", duration)
     compose = (
-        f"[bg][shadow]overlay={sx}:{sy}:format=auto[bgs];"
+        f"[bgo][shadow]overlay={sx}:{sy}:format=auto[bgs];"
         f"[bgs][fg]overlay={fx}:{fy}:format=auto[outv]"
     )
-    return f"{bg_chain};{fg_chain};{shadow_chain};{compose}"
+    return f"{bg_chain};{fg_chain};{shadow_chain};{ov_chain};{compose}"
+
+
+def _socials_append_waveform(
+    base_fc: str,
+    wave_input_idx: int,
+    in_label: str,
+    out_label: str,
+    seg_start: float,
+    seg_len: float,
+    total_dur: float,
+    strip_h: int,
+    title: str,
+    duration: float,
+) -> str:
+    """
+    Append waveform overlay filters to an existing filter complex string.
+    base_fc produces [in_label] at 1080×1920. Returns extended fc producing [out_label].
+
+    strip_h controls how far from the bottom of the frame the strip sits (vertical position).
+    No dark background panel. White waveform bars, red playhead line.
+    """
+    fw, fh = SOCIALS_W, SOCIALS_H
+    pad = 30
+    # strip_h is repurposed as the bottom offset in pixels (how high up from the bottom)
+    # Range 60-220 → bottom gap 60-220px from the bottom of the frame
+    bottom_gap = max(40, strip_h)
+    title_h = 38 if title else 0
+    wave_w = fw - 2 * pad   # 1020
+    # Fixed waveform bar height regardless of position slider
+    wave_h = 100
+    strip_total_h = title_h + wave_h + (10 if title else 0)
+
+    wave_y = fh - bottom_gap - wave_h
+    title_y = wave_y - title_h - 4 if title else wave_y
+
+    seg_len_s = max(0.001, seg_len)
+    # Playhead x position at time T: sweeps from pad to pad+wave_w
+    ph_x0 = pad
+    ph_speed = wave_w / seg_len_s  # pixels per second
+
+    parts: List[str] = [base_fc]
+
+    # 1) Overlay waveform image (white bars on transparent bg from showwavespic)
+    parts.append(f"[{in_label}][{wave_input_idx}:v]overlay={pad}:{wave_y}[wf1]")
+
+    # 2) Red playhead line using geq (drawbox x-expressions are static in ffmpeg 6.x)
+    # geq reads each pixel: if X is within 2px of the playhead position, paint red.
+    # wave_y_top = wave_y (top of waveform), wave_y_bot = wave_y + wave_h (bottom)
+    wave_y_bot = wave_y + wave_h
+    ph_expr = f"{ph_x0}+{ph_speed:.4f}*T"
+    parts.append(
+        f"[wf1]geq="
+        f"r='if(between(X\\,{ph_expr}\\,{ph_expr}+2)*between(Y\\,{wave_y}\\,{wave_y_bot})\\,220\\,r(X\\,Y))':"
+        f"g='if(between(X\\,{ph_expr}\\,{ph_expr}+2)*between(Y\\,{wave_y}\\,{wave_y_bot})\\,30\\,g(X\\,Y))':"
+        f"b='if(between(X\\,{ph_expr}\\,{ph_expr}+2)*between(Y\\,{wave_y}\\,{wave_y_bot})\\,30\\,b(X\\,Y))'"
+        f"[wf2]"
+    )
+
+    # 3) Song title (if provided)
+    if title:
+        safe_title = title.replace("'", "\\'").replace(":", "\\:").replace("\\", "\\\\")
+        parts.append(
+            f"[wf2]drawtext=text='{safe_title}':fontsize=22:fontcolor=white@0.85:"
+            f"x={pad}:y={title_y}[{out_label}]"
+        )
+    else:
+        parts.append(f"[wf2]copy[{out_label}]")
+
+    return ";".join(parts)
 
 
 def _run_socials_render_job(job_id: str, data: dict) -> None:
@@ -949,12 +1077,31 @@ def _run_socials_render_job(job_id: str, data: dict) -> None:
         if output_format not in ("mp4", "gif", "both"):
             output_format = "mp4"
 
+        # Parse overlays list from payload
+        valid_ov = {"blur", "grain", "glitch", "vignette", "scanlines"}
+        raw_ovs = data.get("overlays") or []
+        overlays: List[Dict] = []
+        if isinstance(raw_ovs, list):
+            for ov in raw_ovs:
+                if isinstance(ov, dict) and (ov.get("type") or "").lower() in valid_ov:
+                    overlays.append({k: v for k, v in ov.items()
+                                     if k in ("type","intensity","block_size","strength")})
+
+        # Waveform overlay (requires audio)
+        use_waveform = bool(data.get("use_waveform", False))
+        waveform_title = str(data.get("waveform_title") or "").strip()[:80]
+        waveform_height = max(60, min(300, int(_safe_float(data.get("waveform_height"), 100))))
+
         # Audio (optional). If present, audio segment drives the duration.
         use_audio = bool(data.get("use_audio", False))
         audio_path = _socials_find_audio(session_id) if use_audio else None
         if use_audio and not audio_path:
             job["status"] = "error"; job["error"] = "Audio enabled but no audio uploaded."
             _write_job(job_id, job); return
+
+        # Waveform also requires audio
+        if use_waveform and not audio_path:
+            use_waveform = False
 
         if use_audio:
             seg_len = max(0.5, _safe_float(data.get("segment_length_sec"), 15.0))
@@ -963,6 +1110,32 @@ def _run_socials_render_job(job_id: str, data: dict) -> None:
         else:
             seg_len = 0.0; seg_start = 0.0
             duration = max(0.5, _safe_float(data.get("duration"), 8.0))
+
+        # Pre-render waveform image if requested
+        waveform_img_path: Optional[Path] = None
+        total_audio_dur = 0.0
+        if use_waveform and audio_path is not None:
+            total_audio_dur = audio_duration(audio_path)
+            waveform_img_path = render_out / "waveform.png" if (render_out := RENDER_DIR / session_id / "SOCIALS") else None
+            render_out = RENDER_DIR / session_id / "SOCIALS"
+            render_out.mkdir(parents=True, exist_ok=True)
+            waveform_img_path = render_out / "waveform.png"
+            _w = SOCIALS_W - 60  # 1020px, 30px padding each side
+            _h = waveform_height
+            # Generate waveform from the SEGMENT only (not full song).
+            # Render at 4× then downscale with lanczos for crisp antialiased bars.
+            wr = subprocess.run([
+                FFMPEG, "-y",
+                "-ss", str(seg_start), "-t", str(seg_len),
+                "-i", str(audio_path),
+                "-filter_complex",
+                (f"showwavespic=s={_w*4}x{_h*4}:"
+                 f"colors=0xffffff:split_channels=0:scale=cbrt:draw=full:filter=average,"
+                 f"scale={_w}:{_h}:flags=lanczos"),
+                str(waveform_img_path)
+            ], capture_output=True, text=True)
+            if wr.returncode != 0:
+                waveform_img_path = None  # fail gracefully, skip waveform
 
         render_out = RENDER_DIR / session_id / "SOCIALS"
         render_out.mkdir(parents=True, exist_ok=True)
@@ -983,6 +1156,7 @@ def _run_socials_render_job(job_id: str, data: dict) -> None:
             strobe_zoom=strobe_zoom,
             strobe_offset_x=strobe_off_x,
             strobe_offset_y=strobe_off_y,
+            overlays=overlays,
         )
 
         base_name = image_path.stem.replace("image_", "")
@@ -997,16 +1171,38 @@ def _run_socials_render_job(job_id: str, data: dict) -> None:
             _write_job(job_id, job)
             v_idx = len(job["videos"]) - 1
 
-            # Inputs: image (looped), optional audio
+            # Build inputs: [0]=image, [1]=audio (optional), [N]=waveform_img (optional)
             cmd: List[str] = [FFMPEG, "-y", "-loop", "1", "-i", str(image_path)]
+            audio_input_idx = None
+            wave_input_idx = None
+
             if use_audio and audio_path is not None:
                 cmd += ["-ss", f"{seg_start}", "-t", f"{seg_len}", "-i", str(audio_path)]
+                audio_input_idx = 1
 
-            cmd += ["-filter_complex", fc, "-map", "[outv]"]
+            if waveform_img_path is not None and waveform_img_path.exists():
+                cmd += ["-loop", "1", "-i", str(waveform_img_path)]
+                wave_input_idx = 2 if audio_input_idx == 1 else 1
+
+            # Extend filter graph with waveform overlay if needed
+            if wave_input_idx is not None and total_audio_dur > 0:
+                fc_final = _socials_append_waveform(
+                    fc, wave_input_idx, "outv", "outv_wave",
+                    seg_start=seg_start, seg_len=seg_len,
+                    total_dur=total_audio_dur,
+                    strip_h=waveform_height, title=waveform_title,
+                    duration=duration,
+                )
+                out_label = "outv_wave"
+            else:
+                fc_final = fc
+                out_label = "outv"
+
+            cmd += ["-filter_complex", fc_final, "-map", f"[{out_label}]"]
 
             if fmt == "mp4":
-                if use_audio and audio_path is not None:
-                    cmd += ["-map", "1:a:0", "-c:a", "aac", "-b:a", "320k"]
+                if use_audio and audio_input_idx is not None:
+                    cmd += ["-map", f"{audio_input_idx}:a:0", "-c:a", "aac", "-b:a", "320k"]
                 cmd += [
                     "-t", f"{duration}",
                     "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",

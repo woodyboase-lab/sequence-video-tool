@@ -21,7 +21,7 @@
     }
     html{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;}
     body{min-height:100vh;background:var(--bg);background-image:radial-gradient(ellipse 80% 40% at 50% -10%,rgba(232,255,71,0.06) 0%,transparent 70%);}
-    .shell{max-width:820px;margin:0 auto;padding:0 20px 80px;}
+    .shell{max-width:740px;margin:0 auto;padding:0 20px 80px;}
     header{padding:40px 0 36px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);margin-bottom:32px;}
     .logo{display:flex;align-items:center;gap:12px;}
     .logo-mark{width:34px;height:34px;background:var(--accent);border-radius:8px;display:flex;align-items:center;justify-content:center;}
@@ -144,9 +144,9 @@
     input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:3px;background:var(--border);border-radius:2px;outline:none;}
     input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;background:var(--accent);border-radius:50%;cursor:pointer;border:2px solid var(--bg);}
     input[type=range]::-moz-range-thumb{width:14px;height:14px;background:var(--accent);border-radius:50%;cursor:pointer;border:2px solid var(--bg);}
-    .socials-layout{display:grid;grid-template-columns:1fr 300px;gap:12px;align-items:start;}
+    .socials-layout{display:grid;grid-template-columns:1fr 260px;gap:10px;align-items:start;}
     @media(max-width:760px){.socials-layout{grid-template-columns:1fr;}}
-    .preview-wrap{display:flex;align-items:center;justify-content:center;padding:20px;background:var(--surface2);border-radius:var(--radius-sm);min-height:480px;}
+    .preview-wrap{display:flex;align-items:center;justify-content:center;padding:20px;background:var(--surface2);border-radius:var(--radius-sm);min-height:560px;}
     .phone-frame{position:relative;width:240px;height:427px;border-radius:16px;overflow:hidden;background:#222;box-shadow:0 12px 40px rgba(0,0,0,0.6),0 0 0 1px rgba(255,255,255,0.04);}
     .phone-frame.empty::after{content:"Upload a square image to preview";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--text-dim);font-family:var(--mono);font-size:11px;text-align:center;padding:20px;}
     /* Background layer for the socials preview. JavaScript drives its width/height
@@ -163,11 +163,36 @@
       transition:filter 0.3s;
       will-change:transform;
     }
-    .bg-layer.inverted{filter:invert(1);}
-    .bg-layer.bw{filter:grayscale(1);}
     .strobe-layer{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;}
     .strobe-layer.active{animation:strobe 0.2s steps(1) infinite;}
     @keyframes strobe{0%,49%{background:#000;opacity:var(--strobe-op,0.6);}50%,100%{background:#fff;opacity:var(--strobe-op,0.6);}}
+    /* Overlay preview layers — sit above bg, below fg (z-index between strobe-layer=1 and fg-square=2) */
+    .ov-layer{position:absolute;inset:0;pointer-events:none;z-index:1;opacity:0;}
+    #socialsOvVignette{background:radial-gradient(ellipse at center,transparent 38%,rgba(0,0,0,0.9) 100%);}
+    #socialsOvScanlines{}
+    #socialsOvLightleak{animation:none;}
+    #socialsOvLightleak.active{animation:lightleakDrift 6s ease-in-out infinite;}
+    @keyframes lightleakDrift{
+      0%,100%{background:radial-gradient(ellipse 60% 50% at 65% 55%,rgba(255,220,100,0.75) 0%,rgba(255,170,50,0.35) 45%,transparent 70%);}
+      33%{background:radial-gradient(ellipse 55% 45% at 28% 38%,rgba(255,220,100,0.75) 0%,rgba(255,170,50,0.35) 45%,transparent 70%);}
+      66%{background:radial-gradient(ellipse 65% 55% at 72% 72%,rgba(255,220,100,0.75) 0%,rgba(255,170,50,0.35) 45%,transparent 70%);}
+    }
+    /* Overlay control buttons */
+    .overlay-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:4px;}
+    .overlay-btn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;padding:10px 6px;background:#161616;border:1px solid var(--border);border-radius:8px;cursor:pointer;color:var(--text-muted);font-size:11px;font-weight:500;letter-spacing:0.4px;transition:all 0.15s;user-select:none;}
+    .overlay-btn:hover{background:#1e1e1e;color:var(--text);border-color:#333;}
+    .overlay-btn.active{background:rgba(232,255,71,0.08);border-color:var(--accent-border);color:var(--accent);}
+    .overlay-btn .ov-icon{font-size:16px;line-height:1;}
+    .overlay-sliders{display:flex;flex-direction:column;gap:12px;margin-top:12px;}
+    /* Audio track highlight */
+    .audio-track-card{background:rgba(232,255,71,0.03);border:1px solid rgba(232,255,71,0.14);border-radius:10px;padding:14px;margin-top:4px;}
+    .card-sublabel{font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);margin-bottom:10px;font-weight:600;}
+    /* Side-by-side audio + waveform layout — equal width, equal height */
+    .aw-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:4px;align-items:stretch;}
+    .aw-card{display:flex;flex-direction:column;}
+    .wf-mini-preview{position:relative;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:6px;height:70px;overflow:hidden;flex-shrink:0;}
+    .waveform-section-disabled{opacity:0.45;pointer-events:none;transition:opacity 0.2s;}
+    .waveform-section-disabled.wf-enabled{opacity:1;pointer-events:auto;}
     .fg-square{position:absolute;width:68%;aspect-ratio:1;left:50%;top:50%;transform:translate(-50%,-50%);background-size:cover;background-position:center;box-shadow:0 0 40px 8px rgba(0,0,0,0.45);z-index:2;}
     .path-shape-group{display:flex;gap:8px;}
     .path-shape-btn{display:inline-flex;align-items:center;justify-content:center;width:56px;height:48px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:8px;color:#888;cursor:pointer;transition:all 0.15s;padding:0;}
@@ -286,46 +311,63 @@
 
         <div class="divider"></div>
 
-        <div class="card-label">Audio Track <span class="badge">OPTIONAL</span></div>
-        <label class="check-row" style="margin-bottom:12px;">
-          <input type="checkbox" id="socialsAudioToggle" onchange="onSocialsAudioToggle()">
-          <span class="check-box"></span>
-          <div>
-            <div class="check-label">Add audio to output</div>
-            <div class="check-sub">Animation will loop to match audio duration</div>
-          </div>
-        </label>
-        <div class="hidden" id="socialsAudioWrap">
-          <div class="upload-zone" id="socialsAudioZone">
-            <input type="file" id="socialsAudioFile" accept=".wav,.aif,.aiff,.mp3" onchange="onSocialsAudioSelected()">
-            <span class="uz-icon">&#127925;</span>
-            <div class="uz-title">Click to upload audio</div>
-            <div class="uz-sub">WAV, AIF or MP3</div>
-          </div>
-          <div class="file-info" id="socialsAudioInfo">
-            <span class="fi-dot"></span><span class="fi-name" id="socialsAudioInfoName"></span>
-            <span class="fi-meta" id="socialsAudioInfoMeta"></span>
-            <button class="fi-clear" onclick="clearSocialsAudio()">&#10005;</button>
-          </div>
-          <div class="hidden" id="socialsSegmentControls" style="margin-top:14px;">
-            <div class="grid2" style="margin-bottom:14px;">
-              <div class="field" style="margin:0;"><label>Segment length (sec)</label><input type="number" id="socialsSegLen" value="15" min="1" oninput="socials_onSegLenChanged()"></div>
-              <div class="field" style="margin:0;"><label>Start (MM:SS)</label><input type="text" id="socialsSegStart" value="00:00" oninput="socials_onStartInput()" onblur="socials_onStartBlur()"></div>
-            </div>
-            <div class="wave-card">
-              <div class="wave-container" id="socialsWave"></div>
-              <div class="wave-controls">
-                <button class="btn btn-ghost btn-sm" onclick="socials_playPause()">&#9654; Play/Pause</button>
-                <button class="btn btn-ghost btn-sm" onclick="socials_stopWave()">&#9632; Stop</button>
-                <span class="wave-info" id="socialsWaveInfo"></span>
-              </div>
-            </div>
-          </div>
+        <div class="card-label">Background Overlays</div>
+        <div class="overlay-grid" id="socialsOverlayBtns">
+          <div class="overlay-btn" data-ov="blur"><span class="ov-icon">◎</span><span>Blur</span></div>
+          <div class="overlay-btn" data-ov="grain"><span class="ov-icon">◌</span><span>Grain</span></div>
+          <div class="overlay-btn" data-ov="glitch"><span class="ov-icon">⚡</span><span>Glitch</span></div>
+          <div class="overlay-btn" data-ov="vignette"><span class="ov-icon">◉</span><span>Vignette</span></div>
+          <div class="overlay-btn" data-ov="scanlines"><span class="ov-icon">≡</span><span>Scan Lines</span></div>
         </div>
+        <div class="overlay-sliders hidden" id="socialsOverlaySliders"></div>
 
         <div class="divider"></div>
 
-        <div class="card-label">Output</div>
+        <div class="card-label">Audio &amp; Waveform <span class="badge">OPTIONAL</span></div>
+
+        <div class="aw-row">
+
+          <!-- Left: Audio Track -->
+          <div class="audio-track-card aw-card">
+            <div class="card-sublabel">Audio Track</div>
+            <label class="check-row" style="margin-bottom:0;">
+              <input type="checkbox" id="socialsAudioToggle" onchange="onSocialsAudioToggle()">
+              <span class="check-box"></span>
+              <div>
+                <div class="check-label">Add audio to output</div>
+                <div class="check-sub">Loops to match length</div>
+              </div>
+            </label>
+            <div class="hidden" id="socialsAudioWrap" style="margin-top:12px;">
+              <div class="upload-zone" id="socialsAudioZone" style="min-height:72px;">
+                <input type="file" id="socialsAudioFile" accept=".wav,.aif,.aiff,.mp3" onchange="onSocialsAudioSelected()">
+                <span class="uz-icon" style="font-size:22px;">🎵</span>
+                <div class="uz-title" style="font-size:13px;font-weight:600;">Click to upload audio</div>
+                <div class="uz-sub">WAV · AIF · MP3</div>
+              </div>
+              <div class="file-info" id="socialsAudioInfo">
+                <span class="fi-dot"></span><span class="fi-name" id="socialsAudioInfoName"></span>
+                <span class="fi-meta" id="socialsAudioInfoMeta"></span>
+                <button class="fi-clear" onclick="clearSocialsAudio()">&#10005;</button>
+              </div>
+              <div class="hidden" id="socialsSegmentControls" style="margin-top:14px;">
+                <div class="grid2" style="margin-bottom:14px;">
+                  <div class="field" style="margin:0;"><label>Segment length (sec)</label><input type="number" id="socialsSegLen" value="15" min="1" oninput="socials_onSegLenChanged()"></div>
+                  <div class="field" style="margin:0;"><label>Start (MM:SS)</label><input type="text" id="socialsSegStart" value="00:00" oninput="socials_onStartInput()" onblur="socials_onStartBlur()"></div>
+                </div>
+                <div class="wave-card">
+                  <div class="wave-container" id="socialsWave"></div>
+                  <div class="wave-controls">
+                    <button class="btn btn-ghost btn-sm" onclick="socials_playPause()">&#9654; Play/Pause</button>
+                    <button class="btn btn-ghost btn-sm" onclick="socials_stopWave()">&#9632; Stop</button>
+                    <span class="wave-info" id="socialsWaveInfo"></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
         <div id="socialsDurationField">
           <div class="slider-row"><span>Duration</span><span class="val" id="socialsDurVal">8s</span></div>
           <input type="range" min="3" max="20" value="8" id="socialsDur">
@@ -344,15 +386,72 @@
         <div class="card-label">Live Preview <span class="badge yellow">9:16</span></div>
         <div class="preview-wrap">
           <div class="phone-frame empty" id="socialsPhoneFrame">
-            <div class="bg-layer" id="socialsBgLayer"></div>
+            <div class="bg-layer" id="socialsBgLayer">
+              <!-- Glitch channel-split layers — children of bg-layer so they inherit its geometry -->
+              <div id="socialsGlitchR" style="display:none;position:absolute;inset:0;background-size:cover;background-position:center;mix-blend-mode:screen;opacity:0.85;"></div>
+              <div id="socialsGlitchC" style="display:none;position:absolute;inset:0;background-size:cover;background-position:center;mix-blend-mode:screen;opacity:0.85;"></div>
+            </div>
             <div class="strobe-layer" id="socialsStrobeLayer"></div>
+            <div class="ov-layer" id="socialsOvVignette"></div>
+            <div class="ov-layer" id="socialsOvScanlines"></div>
+            <div class="ov-layer" id="socialsOvLightleak"></div>
             <div class="fg-square" id="socialsFgSquare"></div>
+            <!-- Waveform preview strip — shown when waveform is enabled -->
+            <div id="socialsWavePreview" style="display:none;position:absolute;left:0;right:0;pointer-events:none;z-index:3;bottom:50px;">
+              <div id="socialsWavePreviewPanel" style="padding:0 7px;">
+                <div id="socialsWavePreviewTitle" style="font-size:6px;color:rgba(255,255,255,0.8);margin-bottom:3px;font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:none;"></div>
+                <div id="socialsWavePreviewTrack" style="position:relative;overflow:hidden;height:22px;">
+                  <canvas id="socialsWavePreviewCanvas" style="display:block;width:100%;height:100%;"></canvas>
+                  <div id="socialsWavePreviewLine" style="position:absolute;top:0;height:100%;width:1px;background:rgba(220,40,40,0.95);left:0;display:none;"></div>
+                </div>
+              </div>
+            </div>
           </div>
+          <svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0;overflow:hidden;">
+            <defs>
+              <filter id="socialsGrainFilter" x="0%" y="0%" width="100%" height="100%" color-interpolation-filters="sRGB">
+                <feTurbulence id="socialsGrainTurb" type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch" result="noise"/>
+                <feColorMatrix type="saturate" values="0" in="noise" result="gray"/>
+                <feBlend in="SourceGraphic" in2="gray" mode="overlay" result="blended"/>
+                <feComposite in="blended" in2="SourceGraphic" operator="in"/>
+              </filter>
+            </defs>
+          </svg>
         </div>
         <div class="preview-meta">
           <span>1080 &times; 1920</span>
           <span class="v" id="socialsDurMeta">8s &middot; MP4</span>
         </div>
+
+        <!-- Waveform Overlay — lives in the right column, below the phone preview -->
+        <div id="socialsWaveformSection" class="audio-track-card" style="display:none;margin-top:10px;">
+          <div class="card-sublabel">Waveform Overlay</div>
+          <label class="check-row" style="margin-bottom:0;">
+            <input type="checkbox" id="socialsWaveformToggle" onchange="onSocialsWaveformToggle()">
+            <span class="check-box"></span>
+            <div>
+              <div class="check-label">Add waveform to video</div>
+              <div class="check-sub">Selected segment · red playhead</div>
+            </div>
+          </label>
+          <div class="hidden" id="socialsWaveformWrap" style="margin-top:12px;display:flex;flex-direction:column;gap:12px;">
+            <div class="wf-mini-preview" id="socialsWfMiniWrap">
+              <canvas id="socialsWfMiniCanvas" style="display:block;width:100%;height:100%;"></canvas>
+              <div id="socialsWfMiniLine" style="position:absolute;top:0;bottom:0;width:1px;background:rgba(220,40,40,0.9);left:0;display:none;"></div>
+            </div>
+            <div class="field" style="margin:0;">
+              <label>Song title <span style="opacity:0.5;font-weight:400;">(optional)</span></label>
+              <input type="text" id="socialsWaveformTitle" placeholder="Artist — Track name" maxlength="80"
+                     oninput="onSocialsWaveformTitleInput()">
+            </div>
+            <div>
+              <div class="slider-row"><span>Position from bottom</span><span class="val" id="socialsWaveformHeightVal">100px</span></div>
+              <input type="range" min="60" max="400" value="100" id="socialsWaveformHeight"
+                     oninput="onSocialsWaveformHeightChange(this.value)">
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
   </div>
@@ -901,8 +1000,400 @@ let socialsState = {
   duration: 8,
   outputFormat: "mp4",
   audioFile: null,
-  audioBlobUrl: null
+  audioBlobUrl: null,
+  overlays: {
+    blur:      { active: false, intensity: 40 },
+    grain:     { active: false, intensity: 35 },
+    glitch:    { active: false, intensity: 50 },
+    vignette:  { active: false, strength:  60 },
+    scanlines: { active: false, intensity: 50 },
+  }
 };
+
+const OVERLAY_CFG = {
+  blur:      { label: "Intensity",  param: "intensity",  min: 5,  max: 100, def: 40,  unit: "%" },
+  grain:     { label: "Intensity",  param: "intensity",  min: 5,  max: 100, def: 35,  unit: "%" },
+  glitch:    { label: "Intensity",  param: "intensity",  min: 5,  max: 100, def: 50,  unit: "%" },
+  vignette:  { label: "Strength",   param: "strength",   min: 10, max: 100, def: 60,  unit: "%" },
+  scanlines: { label: "Darkness",   param: "intensity",  min: 10, max: 100, def: 50,  unit: "%" },
+};
+const OVERLAY_ORDER = ["blur","grain","glitch","vignette","scanlines"];
+
+function socialsInitOverlays(){
+  document.querySelectorAll("#socialsOverlayBtns .overlay-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const ov = btn.dataset.ov;
+      socialsState.overlays[ov].active = !socialsState.overlays[ov].active;
+      btn.classList.toggle("active", socialsState.overlays[ov].active);
+      socialsRebuildOverlaySliders();
+      applySocialsOverlayPreview();
+    });
+  });
+}
+
+function socialsRebuildOverlaySliders(){
+  const container = document.getElementById("socialsOverlaySliders");
+  const active = OVERLAY_ORDER.filter(k => socialsState.overlays[k].active);
+  if(!active.length){ container.classList.add("hidden"); container.innerHTML = ""; return; }
+  container.classList.remove("hidden");
+  container.innerHTML = active.map(key => {
+    const cfg = OVERLAY_CFG[key];
+    const val = socialsState.overlays[key][cfg.param] ?? cfg.def;
+    const name = key.charAt(0).toUpperCase() + key.slice(1).replace("_"," ");
+    return `<div>
+      <div class="slider-row"><span>${name} — ${cfg.label}</span>
+        <span class="val" id="ovVal_${key}">${val}${cfg.unit}</span></div>
+      <input type="range" min="${cfg.min}" max="${cfg.max}" value="${val}" id="ovSlider_${key}">
+    </div>`;
+  }).join("");
+  active.forEach(key => {
+    const cfg = OVERLAY_CFG[key];
+    document.getElementById(`ovSlider_${key}`).addEventListener("input", e => {
+      const v = parseInt(e.target.value);
+      socialsState.overlays[key][cfg.param] = v;
+      document.getElementById(`ovVal_${key}`).textContent = v + cfg.unit;
+      applySocialsOverlayPreview();
+    });
+  });
+}
+
+// Compose the bg-layer's CSS filter string from bg treatment + active overlay effects.
+// Called any time treatment, overlays, or animation changes.
+// The ov-layer divs handle vignette, scanlines, lightleak — those aren't on the bg-layer.
+function applySocialsOverlayPreview(){
+  const bg = document.getElementById("socialsBgLayer");
+  if(!bg) return;
+  const ovs = socialsState.overlays;
+
+  // --- bg-layer CSS filter: treatment + blur + grain ---
+  // Glitch is handled separately via child divs (see below).
+  const f = [];
+  if(socialsState.bgTreatment === "inverted") f.push("invert(1)");
+  if(socialsState.bgTreatment === "bw")       f.push("grayscale(1)");
+  if(ovs.blur.active){
+    const px = (ovs.blur.intensity / 100 * 20).toFixed(1);
+    f.push(`blur(${px}px)`);
+  }
+  if(ovs.grain.active){
+    const turb = document.getElementById("socialsGrainTurb");
+    if(turb) turb.setAttribute("baseFrequency", (0.55 + (100-ovs.grain.intensity)*0.004).toFixed(3));
+    f.push("url(#socialsGrainFilter)");
+  }
+  bg.style.filter = f.length ? f.join(" ") : "";
+
+  // --- Glitch: two child divs inside bg-layer, each showing the same bg image
+  // but shifted horizontally and tinted to one colour channel.
+  // They inherit the bg-layer's size/crop/pan geometry automatically.
+  // R-channel ghost: tinted red, shifted right → gives red fringe on right edges
+  // C-channel ghost: tinted cyan, shifted left → gives cyan fringe on left edges
+  // mix-blend-mode:screen means overlapping areas add, non-overlapping areas show fringe.
+  const glitchR = document.getElementById("socialsGlitchR");
+  const glitchC = document.getElementById("socialsGlitchC");
+  if(glitchR && glitchC){
+    if(ovs.glitch.active && socialsState.imageDataUrl){
+      const n = ovs.glitch.intensity;
+      // Shift in preview pixels: intensity 5→100 maps to ~1→12px
+      const shift = Math.max(1, Math.round(n * 0.12));
+      const img = socialsState.imageDataUrl;
+      // Both divs cover the full bg-layer with the same image at the same scale
+      for(const el of [glitchR, glitchC]){
+        el.style.backgroundImage = `url(${img})`;
+        el.style.backgroundSize  = bg.style.width  ? `${bg.style.width} ${bg.style.height}` : "cover";
+        el.style.display = "block";
+      }
+      // Red ghost: shifts right, tinted red (suppress G and B)
+      glitchR.style.transform = `translateX(${shift}px)`;
+      glitchR.style.filter    = "saturate(0) sepia(1) hue-rotate(-20deg) saturate(4) brightness(1.2)";
+      // Cyan ghost: shifts left, tinted cyan (suppress R)
+      glitchC.style.transform = `translateX(-${shift}px)`;
+      glitchC.style.filter    = "saturate(0) sepia(1) hue-rotate(160deg) saturate(4) brightness(1.2)";
+    } else {
+      glitchR.style.display = "none";
+      glitchC.style.display = "none";
+    }
+  }
+
+  // --- Vignette ov-layer ---
+  const vigEl = document.getElementById("socialsOvVignette");
+  if(vigEl) vigEl.style.opacity = ovs.vignette.active ? (ovs.vignette.strength/100).toFixed(2) : "0";
+
+  // --- Scan lines ov-layer ---
+  const slEl = document.getElementById("socialsOvScanlines");
+  if(slEl){
+    if(ovs.scanlines.active){
+      const d = (ovs.scanlines.intensity / 100 * 0.55).toFixed(2);
+      slEl.style.background = `repeating-linear-gradient(0deg,rgba(0,0,0,${d}) 0px,rgba(0,0,0,${d}) 2px,transparent 2px,transparent 4px)`;
+      slEl.style.opacity = "1";
+    } else { slEl.style.opacity = "0"; }
+  }
+
+  const llEl = document.getElementById("socialsOvLightleak");
+  if(llEl) llEl.style.opacity = "0";
+}
+
+function socialsOverlaysToPayload(){
+  return OVERLAY_ORDER.filter(k => socialsState.overlays[k].active).map(key => {
+    const cfg = OVERLAY_CFG[key];
+    return { type: key, [cfg.param]: socialsState.overlays[key][cfg.param] ?? cfg.def };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Waveform overlay
+// ---------------------------------------------------------------------------
+let socialsWaveformState = {
+  enabled: false,
+  title: "",
+  height: 100,
+  _rafId: null,
+  _miniRafId: null,
+  _startTime: null,
+};
+
+function onSocialsWaveformToggle(){
+  const on = document.getElementById("socialsWaveformToggle").checked;
+  socialsWaveformState.enabled = on;
+  document.getElementById("socialsWaveformWrap").classList.toggle("hidden", !on);
+  if(on) socialsDrawMiniWaveform(true);
+  else   socialsDrawMiniWaveform(false);
+  socialsUpdateWaveformPreview();
+}
+
+function onSocialsWaveformTitleInput(){
+  socialsWaveformState.title = document.getElementById("socialsWaveformTitle").value;
+  socialsUpdateWaveformPreview();
+}
+
+function onSocialsWaveformHeightChange(val){
+  socialsWaveformState.height = parseInt(val);
+  document.getElementById("socialsWaveformHeightVal").textContent = val + "px";
+  // Update preview position: map export bottom_gap (60–400px) to preview bottom (12–80px)
+  const previewBottom = Math.round(parseInt(val) * (80/400));
+  const preview = document.getElementById("socialsWavePreview");
+  if(preview) preview.style.bottom = previewBottom + "px";
+  socialsUpdateWaveformPreview();
+}
+
+// Called when audio is uploaded or cleared to show/hide the waveform section
+function socialsUpdateWaveformAvailability(){
+  const audioReady = !!(socialsState.audioFile && socialsState.audioServerName);
+  const section = document.getElementById("socialsWaveformSection");
+  section.style.display = audioReady ? "block" : "none";
+  if(!audioReady){
+    // Reset waveform state when audio removed
+    document.getElementById("socialsWaveformToggle").checked = false;
+    socialsWaveformState.enabled = false;
+    document.getElementById("socialsWaveformWrap").classList.add("hidden");
+    socialsUpdateWaveformPreview();
+  }
+}
+
+// Draw the waveform preview from the audio blob (using WaveSurfer data if available)
+function socialsUpdateWaveformPreview(){
+  const preview = document.getElementById("socialsWavePreview");
+  const on = socialsWaveformState.enabled && !!(socialsState.audioFile);
+  preview.style.display = on ? "block" : "none";
+  if(!on){ _socialsStopWaveformAnimation(); socialsDrawMiniWaveform(false); return; }
+
+  // Track height is fixed — never changes with the position slider
+  const track = document.getElementById("socialsWavePreviewTrack");
+  track.style.height = "22px";
+
+  // Title
+  const titleEl = document.getElementById("socialsWavePreviewTitle");
+  if(titleEl){
+    titleEl.textContent = socialsWaveformState.title || "";
+    titleEl.style.display = socialsWaveformState.title ? "block" : "none";
+  }
+
+  // Draw phone-frame preview canvas
+  _socialsDrawWaveformPreviewCanvas();
+
+  // Draw mini waveform in the waveform overlay card
+  socialsDrawMiniWaveform(true);
+
+  // Start animated playhead line
+  _socialsStartWaveformAnimation();
+}
+
+// Draw waveform into the mini preview canvas inside the waveform overlay card
+function socialsDrawMiniWaveform(animate){
+  const canvas = document.getElementById("socialsWfMiniCanvas");
+  const line   = document.getElementById("socialsWfMiniLine");
+  if(!canvas) return;
+
+  const wrap = document.getElementById("socialsWfMiniWrap");
+  const W = wrap ? (wrap.offsetWidth || 260) : 260;
+  const H = 70;
+  canvas.width = W; canvas.height = H;
+
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, W, H);
+
+  let segPeaks = null;
+  try{
+    if(socials_ws && socials_ws.exportPeaks && socials_duration > 0){
+      const all = socials_ws.exportPeaks({channels:1, maxLength:10000})[0];
+      if(all && all.length > 0){
+        const segLen   = socials_getSegLen();
+        const segStart = (() => {
+          const sec = mmssToSecs(document.getElementById("socialsSegStart")?.value || "00:00");
+          return sec === null ? 0 : sec;
+        })();
+        const i0 = Math.floor((segStart / socials_duration) * all.length);
+        const i1 = Math.ceil(((segStart + segLen) / socials_duration) * all.length);
+        segPeaks = all.slice(i0, Math.min(i1, all.length));
+      }
+    }
+  }catch(_){}
+
+  if(segPeaks && segPeaks.length > 0){
+    // Draw bars — two colours: dimmer white for bars, slightly brighter at centre
+    const gradient = ctx.createLinearGradient(0, 0, 0, H);
+    gradient.addColorStop(0,    "rgba(255,255,255,0.25)");
+    gradient.addColorStop(0.5,  "rgba(255,255,255,0.75)");
+    gradient.addColorStop(1,    "rgba(255,255,255,0.25)");
+    ctx.fillStyle = gradient;
+
+    const srcLen = segPeaks.length;
+    for(let x = 0; x < W; x++){
+      const i0s = Math.floor((x / W) * srcLen);
+      const i1s = Math.min(srcLen - 1, Math.ceil(((x + 1) / W) * srcLen));
+      let peak = 0;
+      for(let i = i0s; i <= i1s; i++) peak = Math.max(peak, Math.abs(segPeaks[i] || 0));
+      const amp  = Math.pow(peak, 0.6);
+      const barH = Math.max(1, amp * H * 0.88);
+      ctx.fillRect(x, (H - barH) / 2, 1, barH);
+    }
+  } else {
+    // Placeholder while loading
+    ctx.fillStyle = "rgba(255,255,255,0.2)";
+    for(let x = 0; x < W; x++){
+      const h = Math.max(1, H * 0.15 * (1 + Math.abs(Math.sin(x * 0.12))));
+      ctx.fillRect(x, (H - h) / 2, 1, h);
+    }
+  }
+
+  // Animate the mini red line
+  if(line){
+    if(animate){
+      line.style.display = "block";
+      _socialsAnimateMiniLine(line, W);
+    } else {
+      line.style.display = "none";
+      if(socialsWaveformState._miniRafId){
+        cancelAnimationFrame(socialsWaveformState._miniRafId);
+        socialsWaveformState._miniRafId = null;
+      }
+    }
+  }
+}
+
+function _socialsAnimateMiniLine(line, W){
+  if(socialsWaveformState._miniRafId) cancelAnimationFrame(socialsWaveformState._miniRafId);
+  const segLen = socials_getSegLen() || 15;
+  const startTs = performance.now();
+  const tick = (now) => {
+    if(!socialsWaveformState.enabled) return;
+    const elapsed  = (now - startTs) / 1000;
+    const progress = (elapsed % segLen) / segLen;
+    line.style.left = Math.round(progress * W) + "px";
+    socialsWaveformState._miniRafId = requestAnimationFrame(tick);
+  };
+  socialsWaveformState._miniRafId = requestAnimationFrame(tick);
+}
+
+function _socialsDrawWaveformPreviewCanvas(){
+  const canvas = document.getElementById("socialsWavePreviewCanvas");
+  if(!canvas) return;
+  const track = document.getElementById("socialsWavePreviewTrack");
+  const W = track.offsetWidth || 300;
+  const H = parseInt(track.style.height) || 22;
+  canvas.width = W; canvas.height = H;
+
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, W, H);
+
+  let segPeaks = null;
+
+  // Request peaks at high resolution (10000 samples) so segment slice has enough data
+  try{
+    if(socials_ws && socials_ws.exportPeaks && socials_duration > 0){
+      const allPeaks = socials_ws.exportPeaks({channels: 1, maxLength: 10000})[0];
+      if(allPeaks && allPeaks.length > 0){
+        const segLen  = socials_getSegLen();
+        const segStart = (() => {
+          const sec = mmssToSecs(document.getElementById("socialsSegStart")?.value || "00:00");
+          return sec === null ? 0 : sec;
+        })();
+        const startFrac = Math.max(0, segStart / socials_duration);
+        const endFrac   = Math.min(1, (segStart + segLen) / socials_duration);
+        const startIdx  = Math.floor(startFrac * allPeaks.length);
+        const endIdx    = Math.ceil(endFrac   * allPeaks.length);
+        segPeaks = allPeaks.slice(startIdx, endIdx);
+      }
+    }
+  }catch(_){}
+
+  ctx.fillStyle = "rgba(255,255,255,0.85)";
+
+  if(segPeaks && segPeaks.length > 0){
+    // Average-down: for each output pixel column, average the source peaks that map to it.
+    // This gives a smooth, accurate waveform regardless of zoom level.
+    const srcLen = segPeaks.length;
+    for(let x = 0; x < W; x++){
+      const srcStart = (x / W) * srcLen;
+      const srcEnd   = ((x + 1) / W) * srcLen;
+      const i0 = Math.floor(srcStart);
+      const i1 = Math.min(srcLen - 1, Math.ceil(srcEnd));
+      let peak = 0;
+      for(let i = i0; i <= i1; i++) peak = Math.max(peak, Math.abs(segPeaks[i] || 0));
+      // Apply mild cbrt-like compression to bring out quieter parts
+      const amp = Math.pow(peak, 0.6);
+      const barH = Math.max(1, amp * H * 0.92);
+      ctx.fillRect(x, (H - barH) / 2, 1, barH);
+    }
+  } else {
+    // Placeholder while audio loads — sine-wave shape
+    ctx.fillStyle = "rgba(255,255,255,0.35)";
+    for(let x = 0; x < W; x++){
+      const h = Math.max(1, H * (0.15 + 0.55 * Math.abs(Math.sin(x * 0.12))));
+      ctx.fillRect(x, (H - h) / 2, 1, h);
+    }
+  }
+}
+
+function _socialsStartWaveformAnimation(){
+  _socialsStopWaveformAnimation();
+  const line = document.getElementById("socialsWavePreviewLine");
+  const track = document.getElementById("socialsWavePreviewTrack");
+  if(!line || !track) return;
+
+  const segLen = socials_getSegLen() || 15;
+  line.style.display = "block";
+  const W = track.offsetWidth || 226;
+
+  const animate = (now) => {
+    if(!socialsWaveformState.enabled) return;
+    if(!socialsWaveformState._startTime) socialsWaveformState._startTime = now;
+    const elapsed = (now - socialsWaveformState._startTime) / 1000;
+    const progress = (elapsed % segLen) / segLen;  // 0..1 looping
+    line.style.left = Math.round(progress * W) + "px";
+    socialsWaveformState._rafId = requestAnimationFrame(animate);
+  };
+  socialsWaveformState._startTime = null;
+  socialsWaveformState._rafId = requestAnimationFrame(animate);
+}
+
+function _socialsStopWaveformAnimation(){
+  if(socialsWaveformState._rafId){ cancelAnimationFrame(socialsWaveformState._rafId); socialsWaveformState._rafId = null; }
+  if(socialsWaveformState._miniRafId){ cancelAnimationFrame(socialsWaveformState._miniRafId); socialsWaveformState._miniRafId = null; }
+  socialsWaveformState._startTime = null;
+  const line = document.getElementById("socialsWavePreviewLine");
+  if(line){ line.style.display = "none"; line.style.left = "0"; }
+  const mline = document.getElementById("socialsWfMiniLine");
+  if(mline){ mline.style.display = "none"; }
+}
 let socials_ws=null, socials_regions=null, socials_region=null, socials_duration=0, socials_playing=false, socials_playTimer=null, socials_startInputDirty=false;
 
 async function onSocialsImageSelected(){
@@ -960,7 +1451,14 @@ function clearSocialsImage(){
   document.getElementById("socialsImageFile").value = "";
   document.getElementById("socialsBgLayer").style.backgroundImage = "";
   document.getElementById("socialsBgLayer").style.transform = "translate(-50%,-50%)";
+  document.getElementById("socialsBgLayer").style.filter = "";
   document.getElementById("socialsFgSquare").style.backgroundImage = "";
+  ["socialsOvVignette","socialsOvScanlines","socialsOvLightleak"].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.style.opacity="0";
+  });
+  ["socialsGlitchR","socialsGlitchC"].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.style.display="none";
+  });
   document.getElementById("socialsPhoneFrame").classList.add("empty");
   const z = document.getElementById("socialsImageZone");
   z.classList.remove("has-file");
@@ -1083,6 +1581,7 @@ function applySocialsBg(){
   bg.style.width = bgW + "px";
   bg.style.height = bgH + "px";
   bg.style.transform = "translate(-50%, -50%)";
+  applySocialsOverlayPreview();
 }
 
 function applySocialsAnimation(){
@@ -1108,12 +1607,11 @@ function socialsSetupPills(groupId, onChange){
 
 // Initialise socials controls on page load
 window.addEventListener("load", () => {
+  socialsInitOverlays();
+
   socialsSetupPills("socialsBgTreatment", v => {
     socialsState.bgTreatment = v;
-    const bg = document.getElementById("socialsBgLayer");
-    bg.classList.remove("inverted","bw");
-    if(v==="inverted") bg.classList.add("inverted");
-    if(v==="bw") bg.classList.add("bw");
+    applySocialsOverlayPreview();
   });
 
   socialsSetupPills("socialsAnimType", v => {
@@ -1216,6 +1714,10 @@ async function startSocialsRender(){
       use_audio: useAudio,
       segment_start_sec: segStart,
       segment_length_sec: segLen,
+      overlays: socialsOverlaysToPayload(),
+      use_waveform: socialsWaveformState.enabled && useAudio,
+      waveform_title: socialsWaveformState.title,
+      waveform_height: socialsWaveformState.height,
     };
 
     const r = await fetch("/render_socials", {
@@ -1270,6 +1772,7 @@ async function onSocialsAudioSelected(){
     const result = JSON.parse(txt);
     socialsState.audioServerName = result.filename;
     z.querySelector(".uz-sub").textContent = "Ready";
+    socialsUpdateWaveformAvailability();
   }catch(e){
     z.querySelector(".uz-sub").textContent = "Upload failed";
     showError("Audio upload failed: " + (e.message || e));
@@ -1288,6 +1791,7 @@ function clearSocialsAudio(){
   hideFileInfo("socialsAudio");
   document.getElementById("socialsSegmentControls").classList.add("hidden");
   socials_destroyWave();
+  socialsUpdateWaveformAvailability();
 }
 
 function socials_getSegLen(){const v=parseFloat(document.getElementById("socialsSegLen").value);return isNaN(v)||v<=0?15:v;}
@@ -1316,7 +1820,11 @@ function socials_initWave(){
       const sl2 = socials_getSegLen(), s = clampStart(socials_region.start, sl2, socials_duration);
       socials_region.setOptions({start:s, end:s+sl2});
       if(!socials_startInputDirty) document.getElementById("socialsSegStart").value = secsToMMSS(s);
+      // Restart waveform preview animation with new segment position
+      if(socialsWaveformState.enabled) socialsUpdateWaveformPreview();
     });
+    // Redraw preview canvas now that we have real peaks
+    if(socialsWaveformState.enabled) socialsUpdateWaveformPreview();
   });
   socials_ws.on("error", () => { document.getElementById("socialsWaveInfo").textContent = "Waveform unavailable"; });
   socials_ws.load(socialsState.audioBlobUrl);
@@ -1327,6 +1835,7 @@ function socials_onSegLenChanged(){
   const sl = socials_getSegLen(), s = clampStart(socials_region.start, sl, socials_duration);
   socials_region.setOptions({start:s, end:s+sl});
   if(!socials_startInputDirty) document.getElementById("socialsSegStart").value = secsToMMSS(s);
+  if(socialsWaveformState.enabled) socialsUpdateWaveformPreview();
 }
 
 function socials_onStartInput(){ socials_startInputDirty = true; }
@@ -1339,6 +1848,7 @@ function socials_onStartBlur(){
   const sl = socials_getSegLen(), s = clampStart(sec, sl, socials_duration);
   socials_region.setOptions({start:s, end:s+sl});
   document.getElementById("socialsSegStart").value = secsToMMSS(s);
+  if(socialsWaveformState.enabled) socialsUpdateWaveformPreview();
 }
 
 function socials_playPause(){
