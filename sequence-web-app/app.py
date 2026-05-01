@@ -983,6 +983,54 @@ def _socials_build_filter(
     return f"{bg_chain};{fg_chain};{shadow_chain};{ov_chain};{compose}"
 
 
+def _add_waveform_title(
+    waveform_path: Path,
+    title: str,
+    font_size: int,
+    text_align: str,
+    frame_w: int,
+    pad: int,
+) -> Path:
+    """
+    Draw the song title above the waveform PNG using Pillow.
+    Returns path to the new combined PNG (replaces waveform_path in-place).
+    Works on any ffmpeg build (no drawtext needed).
+    """
+    if not title:
+        return waveform_path
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+        wave_img = Image.open(waveform_path).convert("RGBA")
+        ww, wh = wave_img.size
+        title_h = font_size + 12
+        # Create a taller canvas: title on top, waveform below
+        canvas = Image.new("RGBA", (ww, wh + title_h), (0, 0, 0, 0))
+        canvas.paste(wave_img, (0, title_h))
+        draw = ImageDraw.Draw(canvas)
+        # Try to load a system font, fall back to default
+        try:
+            font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", font_size)
+        except Exception:
+            try:
+                font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", font_size)
+            except Exception:
+                font = ImageFont.load_default()
+        # Measure text
+        bbox = draw.textbbox((0, 0), title, font=font)
+        tw = bbox[2] - bbox[0]
+        if text_align == "centre":
+            tx = (ww - tw) // 2
+        elif text_align == "right":
+            tx = ww - tw - pad
+        else:
+            tx = pad
+        draw.text((tx, 4), title, font=font, fill=(255, 255, 255, 217))
+        canvas.save(waveform_path)
+    except Exception as e:
+        pass  # If anything fails, skip the title rather than crash
+    return waveform_path
+
+
 def _socials_append_waveform(
     base_fc: str,
     wave_input_idx: int,
@@ -994,60 +1042,54 @@ def _socials_append_waveform(
     strip_h: int,
     title: str,
     duration: float,
+    waveform_scale: int = 100,
+    font_size: int = 22,
+    text_align: str = "left",
+    line_input_idx: Optional[int] = None,
 ) -> str:
     """
-    Append waveform overlay filters to an existing filter complex string.
-    base_fc produces [in_label] at 1080×1920. Returns extended fc producing [out_label].
-
-    strip_h controls how far from the bottom of the frame the strip sits (vertical position).
-    No dark background panel. White waveform bars, red playhead line.
+    Append waveform overlay filters.
+    The red playhead line is an explicit input at line_input_idx (a lavfi color source).
+    Using an explicit input is more portable than an inline color= source in filter_complex.
     """
     fw, fh = SOCIALS_W, SOCIALS_H
     pad = 30
-    # strip_h is repurposed as the bottom offset in pixels (how high up from the bottom)
-    # Range 60-220 → bottom gap 60-220px from the bottom of the frame
     bottom_gap = max(40, strip_h)
-    title_h = 38 if title else 0
-    wave_w = fw - 2 * pad   # 1020
-    # Fixed waveform bar height regardless of position slider
-    wave_h = 100
-    strip_total_h = title_h + wave_h + (10 if title else 0)
+    scale_pct = max(10, min(100, waveform_scale))
+    wave_w_max = min(1000, fw - 2 * pad)   # hard cap at 1000px
+    wave_w = max(40, int(wave_w_max * scale_pct / 100))
+    wave_h = max(10, int(100 * scale_pct / 100))
+    title_h = font_size + 12 if title else 0
 
-    wave_y = fh - bottom_gap - wave_h
-    title_y = wave_y - title_h - 4 if title else wave_y
+    # Waveform always centred horizontally in the frame
+    x_off = (fw - wave_w) // 2
+
+    wave_y_base = fh - bottom_gap - wave_h
+    img_y = wave_y_base - title_h
+    wave_y = wave_y_base
 
     seg_len_s = max(0.001, seg_len)
-    # Playhead x position at time T: sweeps from pad to pad+wave_w
-    ph_x0 = pad
-    ph_speed = wave_w / seg_len_s  # pixels per second
+    ph_speed = wave_w / seg_len_s
+
+    font_size = max(14, min(48, font_size))
 
     parts: List[str] = [base_fc]
 
-    # 1) Overlay waveform image (white bars on transparent bg from showwavespic)
-    parts.append(f"[{in_label}][{wave_input_idx}:v]overlay={pad}:{wave_y}[wf1]")
+    # 1) Overlay waveform PNG at x_off (alignment-aware), img_y (title+waveform stacked)
+    parts.append(f"[{in_label}][{wave_input_idx}:v]overlay={x_off}:{img_y}[wf1]")
 
-    # 2) Red playhead line using geq (drawbox x-expressions are static in ffmpeg 6.x)
-    # geq reads each pixel: if X is within 2px of the playhead position, paint red.
-    # wave_y_top = wave_y (top of waveform), wave_y_bot = wave_y + wave_h (bottom)
-    wave_y_bot = wave_y + wave_h
-    ph_expr = f"{ph_x0}+{ph_speed:.4f}*T"
-    parts.append(
-        f"[wf1]geq="
-        f"r='if(between(X\\,{ph_expr}\\,{ph_expr}+2)*between(Y\\,{wave_y}\\,{wave_y_bot})\\,220\\,r(X\\,Y))':"
-        f"g='if(between(X\\,{ph_expr}\\,{ph_expr}+2)*between(Y\\,{wave_y}\\,{wave_y_bot})\\,30\\,g(X\\,Y))':"
-        f"b='if(between(X\\,{ph_expr}\\,{ph_expr}+2)*between(Y\\,{wave_y}\\,{wave_y_bot})\\,30\\,b(X\\,Y))'"
-        f"[wf2]"
-    )
-
-    # 3) Song title (if provided)
-    if title:
-        safe_title = title.replace("'", "\\'").replace(":", "\\:").replace("\\", "\\\\")
+    # 2) Red playhead line at animated x, starting from x_off
+    if line_input_idx is not None:
         parts.append(
-            f"[wf2]drawtext=text='{safe_title}':fontsize=22:fontcolor=white@0.85:"
-            f"x={pad}:y={title_y}[{out_label}]"
+            f"[wf1][{line_input_idx}:v]overlay=x='{x_off}+{ph_speed:.4f}*t':y={wave_y}[wf2]"
         )
     else:
-        parts.append(f"[wf2]copy[{out_label}]")
+        parts.append(f"color=c=red:s=2x{wave_h}:d={seg_len_s:.3f}[redline]")
+        parts.append(f"[wf1][redline]overlay=x='{x_off}+{ph_speed:.4f}*t':y={wave_y}[wf2]")
+
+    # 3) Song title — drawn onto the waveform PNG via Pillow (no drawtext needed)
+    # Title compositing happens before the ffmpeg render in _add_waveform_title().
+    parts.append(f"[wf2]copy[{out_label}]")
 
     return ";".join(parts)
 
@@ -1090,7 +1132,13 @@ def _run_socials_render_job(job_id: str, data: dict) -> None:
         # Waveform overlay (requires audio)
         use_waveform = bool(data.get("use_waveform", False))
         waveform_title = str(data.get("waveform_title") or "").strip()[:80]
-        waveform_height = max(60, min(300, int(_safe_float(data.get("waveform_height"), 100))))
+        waveform_height = max(60, min(500, int(_safe_float(data.get("waveform_height"), 100))))
+        waveform_scale  = max(10, min(100, int(_safe_float(data.get("waveform_scale"), 100))))
+        waveform_font   = max(14, min(48,  int(_safe_float(data.get("waveform_font_size"), 22))))
+        waveform_align  = (data.get("waveform_align") or "left").strip().lower()
+        if waveform_align not in ("left", "centre", "right"): waveform_align = "left"
+        # Actual bar height used for waveform image generation
+        wave_bar_h = max(20, int(100 * waveform_scale / 100))
 
         # Audio (optional). If present, audio segment drives the duration.
         use_audio = bool(data.get("use_audio", False))
@@ -1116,14 +1164,12 @@ def _run_socials_render_job(job_id: str, data: dict) -> None:
         total_audio_dur = 0.0
         if use_waveform and audio_path is not None:
             total_audio_dur = audio_duration(audio_path)
-            waveform_img_path = render_out / "waveform.png" if (render_out := RENDER_DIR / session_id / "SOCIALS") else None
             render_out = RENDER_DIR / session_id / "SOCIALS"
             render_out.mkdir(parents=True, exist_ok=True)
             waveform_img_path = render_out / "waveform.png"
-            _w = SOCIALS_W - 60  # 1020px, 30px padding each side
-            _h = waveform_height
-            # Generate waveform from the SEGMENT only (not full song).
-            # Render at 4× then downscale with lanczos for crisp antialiased bars.
+            _w_max = min(1000, SOCIALS_W - 60)
+            _w = max(40, int(_w_max * waveform_scale / 100))
+            _h = wave_bar_h
             wr = subprocess.run([
                 FFMPEG, "-y",
                 "-ss", str(seg_start), "-t", str(seg_len),
@@ -1135,7 +1181,19 @@ def _run_socials_render_job(job_id: str, data: dict) -> None:
                 str(waveform_img_path)
             ], capture_output=True, text=True)
             if wr.returncode != 0:
-                waveform_img_path = None  # fail gracefully, skip waveform
+                print(f"\n=== WAVEFORM PRE-RENDER ERROR ===\n{wr.stderr[-600:]}\n===", flush=True)
+                job["error"] = f"Waveform pre-render failed: {(wr.stderr or '')[-400:]}"
+                _write_job(job_id, job)
+                waveform_img_path = None
+            elif waveform_title:
+                # Bake title text into the waveform PNG using Pillow (no drawtext needed)
+                _add_waveform_title(
+                    waveform_img_path, waveform_title,
+                    font_size=waveform_font,
+                    text_align=waveform_align,
+                    frame_w=SOCIALS_W,
+                    pad=30,
+                )
 
         render_out = RENDER_DIR / session_id / "SOCIALS"
         render_out.mkdir(parents=True, exist_ok=True)
@@ -1184,6 +1242,13 @@ def _run_socials_render_job(job_id: str, data: dict) -> None:
                 cmd += ["-loop", "1", "-i", str(waveform_img_path)]
                 wave_input_idx = 2 if audio_input_idx == 1 else 1
 
+            # Add red line as explicit lavfi input (more portable than inline color= source)
+            line_input_idx = None
+            if wave_input_idx is not None:
+                wave_h_actual = max(20, int(100 * waveform_scale / 100))
+                cmd += ["-f", "lavfi", "-i", f"color=c=red:s=2x{wave_h_actual}"]
+                line_input_idx = (wave_input_idx or 0) + 1
+
             # Extend filter graph with waveform overlay if needed
             if wave_input_idx is not None and total_audio_dur > 0:
                 fc_final = _socials_append_waveform(
@@ -1192,6 +1257,10 @@ def _run_socials_render_job(job_id: str, data: dict) -> None:
                     total_dur=total_audio_dur,
                     strip_h=waveform_height, title=waveform_title,
                     duration=duration,
+                    waveform_scale=waveform_scale,
+                    font_size=waveform_font,
+                    text_align=waveform_align,
+                    line_input_idx=line_input_idx,
                 )
                 out_label = "outv_wave"
             else:
@@ -1199,6 +1268,7 @@ def _run_socials_render_job(job_id: str, data: dict) -> None:
                 out_label = "outv"
 
             cmd += ["-filter_complex", fc_final, "-map", f"[{out_label}]"]
+            print(f"\n=== SOCIALS CMD ===\n{' '.join(cmd[:20])}...\n=== FC (last 400) ===\n{fc_final[-400:]}\n===", flush=True)
 
             if fmt == "mp4":
                 if use_audio and audio_input_idx is not None:
@@ -1230,6 +1300,7 @@ def _run_socials_render_job(job_id: str, data: dict) -> None:
             else:
                 job["videos"][v_idx]["status"] = "error"
                 job["videos"][v_idx]["error"] = (err or "")[-500:]
+                print(f"\n=== SOCIALS RENDER ERROR ===\n{err[-1000:]}\n=== END ===", flush=True)
             job["done"] = created
             _write_job(job_id, job)
 

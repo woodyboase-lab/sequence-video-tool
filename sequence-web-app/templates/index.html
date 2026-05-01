@@ -439,11 +439,39 @@
               <canvas id="socialsWfMiniCanvas" style="display:block;width:100%;height:100%;"></canvas>
               <div id="socialsWfMiniLine" style="position:absolute;top:0;bottom:0;width:1px;background:rgba(220,40,40,0.9);left:0;display:none;"></div>
             </div>
+
+            <!-- Song title + alignment -->
             <div class="field" style="margin:0;">
               <label>Song title <span style="opacity:0.5;font-weight:400;">(optional)</span></label>
               <input type="text" id="socialsWaveformTitle" placeholder="Artist — Track name" maxlength="80"
                      oninput="onSocialsWaveformTitleInput()">
             </div>
+
+            <!-- Text alignment — full width -->
+            <div>
+              <div class="slider-row" style="margin-bottom:8px;"><span>Text alignment</span></div>
+              <div class="pill-group" id="socialsWaveformAlign" style="gap:4px;">
+                <div class="pill active" data-v="left" style="flex:1;padding:6px 4px;font-size:11px;">Left</div>
+                <div class="pill" data-v="centre" style="flex:1;padding:6px 4px;font-size:11px;">Centre</div>
+                <div class="pill" data-v="right" style="flex:1;padding:6px 4px;font-size:11px;">Right</div>
+              </div>
+            </div>
+
+            <!-- Text size + waveform scale on one row -->
+            <div class="grid2" style="gap:10px;">
+              <div>
+                <div class="slider-row"><span>Text size</span><span class="val" id="socialsWaveformFontVal">22px</span></div>
+                <input type="range" min="14" max="48" value="22" id="socialsWaveformFont"
+                       oninput="onSocialsWaveformFontChange(this.value)">
+              </div>
+              <div>
+                <div class="slider-row"><span>Waveform scale</span><span class="val" id="socialsWaveformScaleVal">100%</span></div>
+                <input type="range" min="10" max="100" value="100" id="socialsWaveformScale"
+                       oninput="onSocialsWaveformScaleChange(this.value)">
+              </div>
+            </div>
+
+            <!-- Position from bottom — full width -->
             <div>
               <div class="slider-row"><span>Position from bottom</span><span class="val" id="socialsWaveformHeightVal">100px</span></div>
               <input type="range" min="60" max="400" value="100" id="socialsWaveformHeight"
@@ -895,7 +923,12 @@ async function pollProgress(jobId){
           item.innerHTML='<span class="dl-name">All videos (ZIP)</span><a class="btn btn-download btn-sm" href="'+job.zip_url+'" download="videos.zip">\u2193 Download all</a>';
           list.appendChild(item);
         }
-      }else{showError(job.error||"Render failed.");}
+      }else{
+        // Collect all per-video errors to show the actual ffmpeg message
+        const videoErrs = (job.videos||[]).filter(v=>v.error).map(v=>v.error).join('\n');
+        const msg = job.error || (videoErrs ? 'ffmpeg error:\n'+videoErrs : 'Render failed.');
+        showError(msg);
+      }
     }
   }catch(e){console.error("Poll error:",e);}
 }
@@ -1145,6 +1178,9 @@ let socialsWaveformState = {
   enabled: false,
   title: "",
   height: 100,
+  scale: 100,
+  fontSize: 22,
+  align: "left",
   _rafId: null,
   _miniRafId: null,
   _startTime: null,
@@ -1167,11 +1203,38 @@ function onSocialsWaveformTitleInput(){
 function onSocialsWaveformHeightChange(val){
   socialsWaveformState.height = parseInt(val);
   document.getElementById("socialsWaveformHeightVal").textContent = val + "px";
-  // Update preview position: map export bottom_gap (60–400px) to preview bottom (12–80px)
   const previewBottom = Math.round(parseInt(val) * (80/400));
   const preview = document.getElementById("socialsWavePreview");
   if(preview) preview.style.bottom = previewBottom + "px";
   socialsUpdateWaveformPreview();
+}
+
+function onSocialsWaveformScaleChange(val){
+  socialsWaveformState.scale = parseInt(val);
+  document.getElementById("socialsWaveformScaleVal").textContent = val + "%";
+  const miniWrap = document.getElementById("socialsWfMiniWrap");
+  if(miniWrap) miniWrap.style.height = Math.round(70 * parseInt(val) / 100) + "px";
+  const track = document.getElementById("socialsWavePreviewTrack");
+  if(track) track.style.height = Math.round(22 * parseInt(val) / 100) + "px";
+  // Redraw everything so scale + title position update together
+  socialsUpdateWaveformPreview();
+}
+
+function onSocialsWaveformFontChange(val){
+  socialsWaveformState.fontSize = parseInt(val);
+  document.getElementById("socialsWaveformFontVal").textContent = val + "px";
+  // Update title in phone preview
+  const titleEl = document.getElementById("socialsWavePreviewTitle");
+  if(titleEl) titleEl.style.fontSize = Math.round(parseInt(val) * (6/22)) + "px";
+}
+
+function socialsInitWaveformAlignPills(){
+  socialsSetupPills("socialsWaveformAlign", v => {
+    socialsWaveformState.align = v;
+    socialsDrawMiniWaveform(socialsWaveformState.enabled);
+    // Recompute title position in phone preview
+    socialsUpdateWaveformPreview();
+  });
 }
 
 // Called when audio is uploaded or cleared to show/hide the waveform section
@@ -1199,11 +1262,26 @@ function socialsUpdateWaveformPreview(){
   const track = document.getElementById("socialsWavePreviewTrack");
   track.style.height = "22px";
 
-  // Title
+  // Title: position and width constrained to match waveform position in the preview
   const titleEl = document.getElementById("socialsWavePreviewTitle");
   if(titleEl){
     titleEl.textContent = socialsWaveformState.title || "";
     titleEl.style.display = socialsWaveformState.title ? "block" : "none";
+    if(socialsWaveformState.title){
+      // Compute waveform geometry in preview coords
+      const track = document.getElementById("socialsWavePreviewTrack");
+      const totalW = track ? (track.offsetWidth || 226) : 226;
+      const scale  = Math.min(1, socialsWaveformState.scale / 100);
+      const W      = Math.max(4, Math.round(totalW * scale));
+      const xOff   = Math.round((totalW - W) / 2);
+      const align  = socialsWaveformState.align;
+      // Title sits within [xOff, xOff+W], text-aligned within that box
+      titleEl.style.marginLeft = xOff + "px";
+      titleEl.style.width      = W + "px";
+      titleEl.style.textAlign  = align === "centre" ? "center" : align;
+      titleEl.style.paddingLeft  = "";
+      titleEl.style.paddingRight = "";
+    }
   }
 
   // Draw phone-frame preview canvas
@@ -1223,12 +1301,18 @@ function socialsDrawMiniWaveform(animate){
   if(!canvas) return;
 
   const wrap = document.getElementById("socialsWfMiniWrap");
-  const W = wrap ? (wrap.offsetWidth || 260) : 260;
-  const H = 70;
-  canvas.width = W; canvas.height = H;
+  const totalW = wrap ? (wrap.offsetWidth || 260) : 260;
+  const H = wrap ? (wrap.offsetHeight || 70) : 70;
 
+  // Scale proportionally, capped at totalW (equivalent of 1000px cap in export)
+  const scale  = Math.min(1, socialsWaveformState.scale / 100);
+  const W      = Math.max(10, Math.round(totalW * scale));
+  // Waveform always centred
+  const xOff   = Math.round((totalW - W) / 2);
+
+  canvas.width = totalW; canvas.height = H;
   const ctx = canvas.getContext("2d");
-  ctx.clearRect(0, 0, W, H);
+  ctx.clearRect(0, 0, totalW, H);
 
   let segPeaks = null;
   try{
@@ -1247,49 +1331,42 @@ function socialsDrawMiniWaveform(animate){
     }
   }catch(_){}
 
-  if(segPeaks && segPeaks.length > 0){
-    // Draw bars — two colours: dimmer white for bars, slightly brighter at centre
-    const gradient = ctx.createLinearGradient(0, 0, 0, H);
-    gradient.addColorStop(0,    "rgba(255,255,255,0.25)");
-    gradient.addColorStop(0.5,  "rgba(255,255,255,0.75)");
-    gradient.addColorStop(1,    "rgba(255,255,255,0.25)");
-    ctx.fillStyle = gradient;
+  const gradient = ctx.createLinearGradient(0, 0, 0, H);
+  gradient.addColorStop(0,   "rgba(255,255,255,0.25)");
+  gradient.addColorStop(0.5, "rgba(255,255,255,0.75)");
+  gradient.addColorStop(1,   "rgba(255,255,255,0.25)");
+  ctx.fillStyle = gradient;
 
+  if(segPeaks && segPeaks.length > 0){
     const srcLen = segPeaks.length;
     for(let x = 0; x < W; x++){
       const i0s = Math.floor((x / W) * srcLen);
       const i1s = Math.min(srcLen - 1, Math.ceil(((x + 1) / W) * srcLen));
       let peak = 0;
       for(let i = i0s; i <= i1s; i++) peak = Math.max(peak, Math.abs(segPeaks[i] || 0));
-      const amp  = Math.pow(peak, 0.6);
-      const barH = Math.max(1, amp * H * 0.88);
-      ctx.fillRect(x, (H - barH) / 2, 1, barH);
+      const barH = Math.max(1, Math.pow(peak, 0.6) * H * 0.88);
+      ctx.fillRect(xOff + x, (H - barH) / 2, 1, barH);
     }
   } else {
-    // Placeholder while loading
     ctx.fillStyle = "rgba(255,255,255,0.2)";
     for(let x = 0; x < W; x++){
       const h = Math.max(1, H * 0.15 * (1 + Math.abs(Math.sin(x * 0.12))));
-      ctx.fillRect(x, (H - h) / 2, 1, h);
+      ctx.fillRect(xOff + x, (H - h) / 2, 1, h);
     }
   }
 
-  // Animate the mini red line
   if(line){
     if(animate){
       line.style.display = "block";
-      _socialsAnimateMiniLine(line, W);
+      _socialsAnimateMiniLine(line, W, xOff);
     } else {
       line.style.display = "none";
-      if(socialsWaveformState._miniRafId){
-        cancelAnimationFrame(socialsWaveformState._miniRafId);
-        socialsWaveformState._miniRafId = null;
-      }
+      if(socialsWaveformState._miniRafId){ cancelAnimationFrame(socialsWaveformState._miniRafId); socialsWaveformState._miniRafId = null; }
     }
   }
 }
 
-function _socialsAnimateMiniLine(line, W){
+function _socialsAnimateMiniLine(line, W, xOff){
   if(socialsWaveformState._miniRafId) cancelAnimationFrame(socialsWaveformState._miniRafId);
   const segLen = socials_getSegLen() || 15;
   const startTs = performance.now();
@@ -1297,7 +1374,8 @@ function _socialsAnimateMiniLine(line, W){
     if(!socialsWaveformState.enabled) return;
     const elapsed  = (now - startTs) / 1000;
     const progress = (elapsed % segLen) / segLen;
-    line.style.left = Math.round(progress * W) + "px";
+    // Line travels from xOff to xOff+W-1 (stays within waveform)
+    line.style.left = Math.round(xOff + progress * (W - 1)) + "px";
     socialsWaveformState._miniRafId = requestAnimationFrame(tick);
   };
   socialsWaveformState._miniRafId = requestAnimationFrame(tick);
@@ -1307,19 +1385,22 @@ function _socialsDrawWaveformPreviewCanvas(){
   const canvas = document.getElementById("socialsWavePreviewCanvas");
   if(!canvas) return;
   const track = document.getElementById("socialsWavePreviewTrack");
-  const W = track.offsetWidth || 300;
+  const totalW = track.offsetWidth || 226;
   const H = parseInt(track.style.height) || 22;
-  canvas.width = W; canvas.height = H;
 
+  const scale = Math.min(1, socialsWaveformState.scale / 100);
+  const W     = Math.max(4, Math.round(totalW * scale));
+  // Waveform always centred
+  const xOff  = Math.round((totalW - W) / 2);
+
+  canvas.width = totalW; canvas.height = H;
   const ctx = canvas.getContext("2d");
-  ctx.clearRect(0, 0, W, H);
+  ctx.clearRect(0, 0, totalW, H);
 
   let segPeaks = null;
-
-  // Request peaks at high resolution (10000 samples) so segment slice has enough data
   try{
     if(socials_ws && socials_ws.exportPeaks && socials_duration > 0){
-      const allPeaks = socials_ws.exportPeaks({channels: 1, maxLength: 10000})[0];
+      const allPeaks = socials_ws.exportPeaks({channels:1, maxLength:10000})[0];
       if(allPeaks && allPeaks.length > 0){
         const segLen  = socials_getSegLen();
         const segStart = (() => {
@@ -1328,37 +1409,27 @@ function _socialsDrawWaveformPreviewCanvas(){
         })();
         const startFrac = Math.max(0, segStart / socials_duration);
         const endFrac   = Math.min(1, (segStart + segLen) / socials_duration);
-        const startIdx  = Math.floor(startFrac * allPeaks.length);
-        const endIdx    = Math.ceil(endFrac   * allPeaks.length);
-        segPeaks = allPeaks.slice(startIdx, endIdx);
+        segPeaks = allPeaks.slice(Math.floor(startFrac * allPeaks.length), Math.ceil(endFrac * allPeaks.length));
       }
     }
   }catch(_){}
 
   ctx.fillStyle = "rgba(255,255,255,0.85)";
-
   if(segPeaks && segPeaks.length > 0){
-    // Average-down: for each output pixel column, average the source peaks that map to it.
-    // This gives a smooth, accurate waveform regardless of zoom level.
     const srcLen = segPeaks.length;
     for(let x = 0; x < W; x++){
-      const srcStart = (x / W) * srcLen;
-      const srcEnd   = ((x + 1) / W) * srcLen;
-      const i0 = Math.floor(srcStart);
-      const i1 = Math.min(srcLen - 1, Math.ceil(srcEnd));
+      const i0 = Math.floor((x / W) * srcLen);
+      const i1 = Math.min(srcLen - 1, Math.ceil(((x + 1) / W) * srcLen));
       let peak = 0;
       for(let i = i0; i <= i1; i++) peak = Math.max(peak, Math.abs(segPeaks[i] || 0));
-      // Apply mild cbrt-like compression to bring out quieter parts
-      const amp = Math.pow(peak, 0.6);
-      const barH = Math.max(1, amp * H * 0.92);
-      ctx.fillRect(x, (H - barH) / 2, 1, barH);
+      const barH = Math.max(1, Math.pow(peak, 0.6) * H * 0.92);
+      ctx.fillRect(xOff + x, (H - barH) / 2, 1, barH);
     }
   } else {
-    // Placeholder while audio loads — sine-wave shape
     ctx.fillStyle = "rgba(255,255,255,0.35)";
     for(let x = 0; x < W; x++){
       const h = Math.max(1, H * (0.15 + 0.55 * Math.abs(Math.sin(x * 0.12))));
-      ctx.fillRect(x, (H - h) / 2, 1, h);
+      ctx.fillRect(xOff + x, (H - h) / 2, 1, h);
     }
   }
 }
@@ -1370,15 +1441,19 @@ function _socialsStartWaveformAnimation(){
   if(!line || !track) return;
 
   const segLen = socials_getSegLen() || 15;
-  line.style.display = "block";
-  const W = track.offsetWidth || 226;
+  const totalW = track.offsetWidth || 226;
+  const scale  = Math.min(1, socialsWaveformState.scale / 100);
+  const W      = Math.max(4, Math.round(totalW * scale));
+  // Waveform always centred
+  const xOff   = Math.round((totalW - W) / 2);
 
+  line.style.display = "block";
   const animate = (now) => {
     if(!socialsWaveformState.enabled) return;
     if(!socialsWaveformState._startTime) socialsWaveformState._startTime = now;
-    const elapsed = (now - socialsWaveformState._startTime) / 1000;
-    const progress = (elapsed % segLen) / segLen;  // 0..1 looping
-    line.style.left = Math.round(progress * W) + "px";
+    const elapsed  = (now - socialsWaveformState._startTime) / 1000;
+    const progress = (elapsed % segLen) / segLen;
+    line.style.left = Math.round(xOff + progress * (W - 1)) + "px";
     socialsWaveformState._rafId = requestAnimationFrame(animate);
   };
   socialsWaveformState._startTime = null;
@@ -1608,6 +1683,7 @@ function socialsSetupPills(groupId, onChange){
 // Initialise socials controls on page load
 window.addEventListener("load", () => {
   socialsInitOverlays();
+  socialsInitWaveformAlignPills();
 
   socialsSetupPills("socialsBgTreatment", v => {
     socialsState.bgTreatment = v;
@@ -1718,6 +1794,9 @@ async function startSocialsRender(){
       use_waveform: socialsWaveformState.enabled && useAudio,
       waveform_title: socialsWaveformState.title,
       waveform_height: socialsWaveformState.height,
+      waveform_scale: socialsWaveformState.scale,
+      waveform_font_size: socialsWaveformState.fontSize,
+      waveform_align: socialsWaveformState.align,
     };
 
     const r = await fetch("/render_socials", {
