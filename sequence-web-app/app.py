@@ -851,6 +851,11 @@ def _socials_build_filter(
     # 1) Background: scale to fill 9:16 (cover) then crop. For pan, oversize to 1.4x.
     is_pan = animation in ("horizontal", "diagonal", "diamond")
     is_strobe = (animation == "strobe")
+    is_zoom_pan = animation in ("ken_burns", "zoom_pulse")
+    is_colour = (animation == "colour_shift")
+
+    fps = 30
+    frames = max(1, int(round(duration * fps)))
 
     if is_pan:
         # Oversized square fill so we have headroom to pan in any direction
@@ -858,6 +863,57 @@ def _socials_build_filter(
             f"[0:v]scale={SOCIALS_BG_PAN_FILL}:{SOCIALS_BG_PAN_FILL}:"
             f"force_original_aspect_ratio=increase,"
             f"crop={SOCIALS_BG_PAN_FILL}:{SOCIALS_BG_PAN_FILL}"
+        )
+    elif is_zoom_pan:
+        # Smooth zoom+pan using scale=eval=frame (zoom) + overlay x/y (pan).
+        # Minimum zoom is 1.15 so there are always enough pixels to cover the frame
+        # even at maximum pan offset — no black bars at any point in the loop.
+        treatment = ""
+        if bg_treatment == "inverted": treatment = ",negate"
+        elif bg_treatment == "bw":     treatment = ",hue=s=0"
+
+        over   = bg_w * 2
+        over_h = bg_h * 2
+
+        if animation == "ken_burns":
+            # Zoom oscillates 1.15 ↔ 1.40 + diagonal pan
+            z_min, z_max = 1.15, 1.40
+            pan_x = int(bg_w * 0.10)
+            pan_y = int(bg_h * 0.04)
+        else:  # zoom_pulse — pure breathing zoom, no pan
+            z_min, z_max = 1.10, 1.35
+            pan_x = pan_y = 0
+
+        z_mid = (z_max + z_min) / 2
+        z_amp = (z_max - z_min) / 2
+        z_expr = f"{z_mid:.3f}+{z_amp:.3f}*cos(2*PI*t/{pan_dur:.3f})"
+        w_out  = f"2*ceil({bg_w}*({z_expr})/2)"
+        h_out  = f"2*ceil({bg_h}*({z_expr})/2)"
+
+        # overlay centres the zoomed layer then adds pan offset
+        ov_x = "(main_w-overlay_w)/2"
+        ov_y = "(main_h-overlay_h)/2"
+        if pan_x:
+            ov_x += f"+{pan_x}*sin(2*PI*t/{pan_dur:.3f})"
+            ov_y += f"+{pan_y}*sin(2*PI*t/{pan_dur:.3f}+PI/3)"
+
+        bg_chain = (
+            f"color=c=black:s={bg_w}x{bg_h}:d={duration:.3f}[_zbase];"
+            f"[0:v]scale={over}:{over_h}:force_original_aspect_ratio=increase,"
+            f"crop={over}:{over_h}{treatment},"
+            f"scale=w='{w_out}':h='{h_out}':eval=frame:flags=bicubic[_zoom];"
+            f"[_zbase][_zoom]overlay=x='{ov_x}':y='{ov_y}'"
+        )
+
+    elif is_colour:
+        treatment = ""
+        if bg_treatment == "inverted": treatment = ",negate"
+        # bw + colour_shift: apply grayscale first so hue shift still cycles lightness-only
+        elif bg_treatment == "bw":    treatment = ",hue=s=0"
+        bg_chain = (
+            f"[0:v]scale={bg_w}:{bg_h}:force_original_aspect_ratio=increase,"
+            f"crop={bg_w}:{bg_h}{treatment},"
+            f"hue=h='360*t/{duration:.3f}'"
         )
     elif is_strobe:
         # Strobe mode: build a bg sized to cover 9:16 at the user's zoom factor,
@@ -878,11 +934,12 @@ def _socials_build_filter(
             f"crop={bg_w}:{bg_h}"
         )
 
-    # Background treatment
-    if bg_treatment == "inverted":
-        bg_chain += ",negate"
-    elif bg_treatment == "bw":
-        bg_chain += ",hue=s=0"
+    # Background treatment (zoom_pan and colour already apply it inline above)
+    if not is_zoom_pan and not is_colour:
+        if bg_treatment == "inverted":
+            bg_chain += ",negate"
+        elif bg_treatment == "bw":
+            bg_chain += ",hue=s=0"
 
     # For strobe with zoom/offset, append the offset crop now (after treatment).
     if is_strobe:
@@ -1108,7 +1165,8 @@ def _run_socials_render_job(job_id: str, data: dict) -> None:
         if bg_treatment not in ("normal", "inverted", "bw"):
             bg_treatment = "normal"
         animation = (data.get("animation") or "none").strip().lower()
-        if animation not in ("none", "strobe", "horizontal", "diagonal", "diamond"):
+        if animation not in ("none", "strobe", "horizontal", "diagonal", "diamond",
+                             "ken_burns", "zoom_pulse", "colour_shift"):
             animation = "none"
         strobe_op = _safe_float(data.get("strobe_opacity"), 60.0) / 100.0
         pan_dur = max(0.5, _safe_float(data.get("pan_duration"), 4.0))

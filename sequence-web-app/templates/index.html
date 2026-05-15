@@ -144,10 +144,10 @@
     input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:3px;background:var(--border);border-radius:2px;outline:none;}
     input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;background:var(--accent);border-radius:50%;cursor:pointer;border:2px solid var(--bg);}
     input[type=range]::-moz-range-thumb{width:14px;height:14px;background:var(--accent);border-radius:50%;cursor:pointer;border:2px solid var(--bg);}
-    .socials-layout{display:grid;grid-template-columns:1fr 260px;gap:10px;align-items:start;}
+    .socials-layout{display:grid;grid-template-columns:1fr 340px;gap:10px;align-items:start;}
     @media(max-width:760px){.socials-layout{grid-template-columns:1fr;}}
-    .preview-wrap{display:flex;align-items:center;justify-content:center;padding:20px;background:var(--surface2);border-radius:var(--radius-sm);min-height:560px;}
-    .phone-frame{position:relative;width:240px;height:427px;border-radius:16px;overflow:hidden;background:#222;box-shadow:0 12px 40px rgba(0,0,0,0.6),0 0 0 1px rgba(255,255,255,0.04);}
+    .preview-wrap{display:flex;align-items:center;justify-content:center;padding:20px;background:var(--surface2);border-radius:var(--radius-sm);min-height:614px;}
+    .phone-frame{position:relative;width:300px;height:534px;border-radius:16px;overflow:hidden;background:#222;box-shadow:0 12px 40px rgba(0,0,0,0.6),0 0 0 1px rgba(255,255,255,0.04);}
     .phone-frame.empty::after{content:"Upload a square image to preview";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--text-dim);font-family:var(--mono);font-size:11px;text-align:center;padding:20px;}
     /* Background layer for the socials preview. JavaScript drives its width/height
        and transform so the geometry exactly mirrors the export's filter graph
@@ -160,8 +160,7 @@
       background-size:cover;background-position:center;
       transform:translate(-50%,-50%);
       transform-origin:center center;
-      transition:filter 0.3s;
-      will-change:transform;
+      will-change:transform,filter;
     }
     .strobe-layer{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;}
     .strobe-layer.active{animation:strobe 0.2s steps(1) infinite;}
@@ -261,6 +260,9 @@
           <div class="pill active" data-v="none">None</div>
           <div class="pill" data-v="strobe">Strobe</div>
           <div class="pill" data-v="pan">Pan</div>
+          <div class="pill" data-v="ken_burns">Ken Burns</div>
+          <div class="pill" data-v="zoom_pulse">Zoom Pulse</div>
+          <div class="pill" data-v="colour_shift">Colour Shift</div>
         </div>
 
         <div id="socialsPathShapes" class="hidden" style="margin-top:14px;">
@@ -305,8 +307,8 @@
         </div>
 
         <div id="socialsPanControls" class="hidden" style="margin-top:16px;">
-          <div class="slider-row"><span>Loop duration</span><span class="val" id="socialsPanDurVal">4s</span></div>
-          <input type="range" min="2" max="12" value="4" id="socialsPanDur">
+          <div class="slider-row"><span>Loop duration</span><span class="val" id="socialsPanDurVal">10s</span></div>
+          <input type="range" min="2" max="12" value="10" id="socialsPanDur">
         </div>
 
         <div class="divider"></div>
@@ -397,10 +399,10 @@
             <div class="ov-layer" id="socialsOvLightleak"></div>
             <div class="fg-square" id="socialsFgSquare"></div>
             <!-- Waveform preview strip — shown when waveform is enabled -->
-            <div id="socialsWavePreview" style="display:none;position:absolute;left:0;right:0;pointer-events:none;z-index:3;bottom:50px;">
+            <div id="socialsWavePreview" style="display:none;position:absolute;left:0;right:0;pointer-events:none;z-index:3;bottom:63px;">
               <div id="socialsWavePreviewPanel" style="padding:0 7px;">
-                <div id="socialsWavePreviewTitle" style="font-size:6px;color:rgba(255,255,255,0.8);margin-bottom:3px;font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:none;"></div>
-                <div id="socialsWavePreviewTrack" style="position:relative;overflow:hidden;height:22px;">
+                <div id="socialsWavePreviewTitle" style="font-size:7px;color:rgba(255,255,255,0.8);margin-bottom:3px;font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:none;"></div>
+                <div id="socialsWavePreviewTrack" style="position:relative;overflow:hidden;height:27px;">
                   <canvas id="socialsWavePreviewCanvas" style="display:block;width:100%;height:100%;"></canvas>
                   <div id="socialsWavePreviewLine" style="position:absolute;top:0;height:100%;width:1px;background:rgba(220,40,40,0.95);left:0;display:none;"></div>
                 </div>
@@ -1029,7 +1031,7 @@ let socialsState = {
   strobeZoom: 1.0,
   strobeOffsetX: 0,
   strobeOffsetY: 0,
-  panDuration: 4,
+  panDuration: 10,
   duration: 8,
   outputFormat: "mp4",
   audioFile: null,
@@ -1203,7 +1205,7 @@ function onSocialsWaveformTitleInput(){
 function onSocialsWaveformHeightChange(val){
   socialsWaveformState.height = parseInt(val);
   document.getElementById("socialsWaveformHeightVal").textContent = val + "px";
-  const previewBottom = Math.round(parseInt(val) * (80/400));
+  const previewBottom = Math.round(parseInt(val) * (100/400));
   const preview = document.getElementById("socialsWavePreview");
   if(preview) preview.style.bottom = previewBottom + "px";
   socialsUpdateWaveformPreview();
@@ -1212,11 +1214,7 @@ function onSocialsWaveformHeightChange(val){
 function onSocialsWaveformScaleChange(val){
   socialsWaveformState.scale = parseInt(val);
   document.getElementById("socialsWaveformScaleVal").textContent = val + "%";
-  const miniWrap = document.getElementById("socialsWfMiniWrap");
-  if(miniWrap) miniWrap.style.height = Math.round(70 * parseInt(val) / 100) + "px";
-  const track = document.getElementById("socialsWavePreviewTrack");
-  if(track) track.style.height = Math.round(22 * parseInt(val) / 100) + "px";
-  // Redraw everything so scale + title position update together
+  // Heights stay fixed — scale only affects x-axis (canvas drawing width)
   socialsUpdateWaveformPreview();
 }
 
@@ -1225,7 +1223,7 @@ function onSocialsWaveformFontChange(val){
   document.getElementById("socialsWaveformFontVal").textContent = val + "px";
   // Update title in phone preview
   const titleEl = document.getElementById("socialsWavePreviewTitle");
-  if(titleEl) titleEl.style.fontSize = Math.round(parseInt(val) * (6/22)) + "px";
+  if(titleEl) titleEl.style.fontSize = Math.round(parseInt(val) * (7/22)) + "px";
 }
 
 function socialsInitWaveformAlignPills(){
@@ -1260,7 +1258,7 @@ function socialsUpdateWaveformPreview(){
 
   // Track height is fixed — never changes with the position slider
   const track = document.getElementById("socialsWavePreviewTrack");
-  track.style.height = "22px";
+  track.style.height = "27px";
 
   // Title: position and width constrained to match waveform position in the preview
   const titleEl = document.getElementById("socialsWavePreviewTitle");
@@ -1304,11 +1302,11 @@ function socialsDrawMiniWaveform(animate){
   const totalW = wrap ? (wrap.offsetWidth || 260) : 260;
   const H = wrap ? (wrap.offsetHeight || 70) : 70;
 
-  // Scale proportionally, capped at totalW (equivalent of 1000px cap in export)
   const scale  = Math.min(1, socialsWaveformState.scale / 100);
   const W      = Math.max(10, Math.round(totalW * scale));
-  // Waveform always centred
+  const drawH  = Math.max(4, Math.round(H * scale));       // scaled bar height
   const xOff   = Math.round((totalW - W) / 2);
+  const yOff   = Math.round((H - drawH) / 2);
 
   canvas.width = totalW; canvas.height = H;
   const ctx = canvas.getContext("2d");
@@ -1331,7 +1329,7 @@ function socialsDrawMiniWaveform(animate){
     }
   }catch(_){}
 
-  const gradient = ctx.createLinearGradient(0, 0, 0, H);
+  const gradient = ctx.createLinearGradient(0, yOff, 0, yOff + drawH);
   gradient.addColorStop(0,   "rgba(255,255,255,0.25)");
   gradient.addColorStop(0.5, "rgba(255,255,255,0.75)");
   gradient.addColorStop(1,   "rgba(255,255,255,0.25)");
@@ -1344,14 +1342,14 @@ function socialsDrawMiniWaveform(animate){
       const i1s = Math.min(srcLen - 1, Math.ceil(((x + 1) / W) * srcLen));
       let peak = 0;
       for(let i = i0s; i <= i1s; i++) peak = Math.max(peak, Math.abs(segPeaks[i] || 0));
-      const barH = Math.max(1, Math.pow(peak, 0.6) * H * 0.88);
-      ctx.fillRect(xOff + x, (H - barH) / 2, 1, barH);
+      const barH = Math.max(1, Math.pow(peak, 0.6) * drawH * 0.88);
+      ctx.fillRect(xOff + x, yOff + (drawH - barH) / 2, 1, barH);
     }
   } else {
     ctx.fillStyle = "rgba(255,255,255,0.2)";
     for(let x = 0; x < W; x++){
-      const h = Math.max(1, H * 0.15 * (1 + Math.abs(Math.sin(x * 0.12))));
-      ctx.fillRect(xOff + x, (H - h) / 2, 1, h);
+      const h = Math.max(1, drawH * 0.15 * (1 + Math.abs(Math.sin(x * 0.12))));
+      ctx.fillRect(xOff + x, yOff + (drawH - h) / 2, 1, h);
     }
   }
 
@@ -1386,12 +1384,13 @@ function _socialsDrawWaveformPreviewCanvas(){
   if(!canvas) return;
   const track = document.getElementById("socialsWavePreviewTrack");
   const totalW = track.offsetWidth || 226;
-  const H = parseInt(track.style.height) || 22;
+  const H = track.offsetHeight || 27;  // fixed container height
 
   const scale = Math.min(1, socialsWaveformState.scale / 100);
-  const W     = Math.max(4, Math.round(totalW * scale));
-  // Waveform always centred
-  const xOff  = Math.round((totalW - W) / 2);
+  const W     = Math.max(4, Math.round(totalW * scale));  // scaled width
+  const drawH = Math.max(2, Math.round(H * scale));       // scaled bar height
+  const xOff  = Math.round((totalW - W) / 2);             // centred x
+  const yOff  = Math.round((H - drawH) / 2);              // centred y
 
   canvas.width = totalW; canvas.height = H;
   const ctx = canvas.getContext("2d");
@@ -1422,14 +1421,14 @@ function _socialsDrawWaveformPreviewCanvas(){
       const i1 = Math.min(srcLen - 1, Math.ceil(((x + 1) / W) * srcLen));
       let peak = 0;
       for(let i = i0; i <= i1; i++) peak = Math.max(peak, Math.abs(segPeaks[i] || 0));
-      const barH = Math.max(1, Math.pow(peak, 0.6) * H * 0.92);
-      ctx.fillRect(xOff + x, (H - barH) / 2, 1, barH);
+      const barH = Math.max(1, Math.pow(peak, 0.6) * drawH * 0.92);
+      ctx.fillRect(xOff + x, yOff + (drawH - barH) / 2, 1, barH);
     }
   } else {
     ctx.fillStyle = "rgba(255,255,255,0.35)";
     for(let x = 0; x < W; x++){
-      const h = Math.max(1, H * (0.15 + 0.55 * Math.abs(Math.sin(x * 0.12))));
-      ctx.fillRect(xOff + x, (H - h) / 2, 1, h);
+      const h = Math.max(1, drawH * (0.15 + 0.55 * Math.abs(Math.sin(x * 0.12))));
+      ctx.fillRect(xOff + x, yOff + (drawH - h) / 2, 1, h);
     }
   }
 }
@@ -1442,11 +1441,15 @@ function _socialsStartWaveformAnimation(){
 
   const segLen = socials_getSegLen() || 15;
   const totalW = track.offsetWidth || 226;
+  const H      = track.offsetHeight || 27;
   const scale  = Math.min(1, socialsWaveformState.scale / 100);
   const W      = Math.max(4, Math.round(totalW * scale));
-  // Waveform always centred
+  const drawH  = Math.max(2, Math.round(H * scale));
   const xOff   = Math.round((totalW - W) / 2);
+  const yOff   = Math.round((H - drawH) / 2);
 
+  line.style.top    = yOff + "px";
+  line.style.height = drawH + "px";
   line.style.display = "block";
   const animate = (now) => {
     if(!socialsWaveformState.enabled) return;
@@ -1550,8 +1553,8 @@ function updateSocialsStartBtn(){
 
 // Frame dimensions in preview units (must match the .phone-frame CSS — 240x427).
 // Export targets 1080x1920; preview scale factor = 240/1080 = 1/4.5 ≈ 0.2222.
-const SOCIALS_FRAME_W = 240;
-const SOCIALS_FRAME_H = 427;
+const SOCIALS_FRAME_W = 300;
+const SOCIALS_FRAME_H = 534;
 const SOCIALS_PREVIEW_SCALE = SOCIALS_FRAME_W / 1080; // pixels-per-export-pixel
 
 // rAF handle for pan animation
@@ -1604,6 +1607,73 @@ function applySocialsBg(){
     const tx = -ox * slackX;
     const ty = -oy * slackY;
     bg.style.transform = `translate(calc(-50% + ${tx}px), calc(-50% + ${ty}px))`;
+    return;
+  }
+
+  if(a === "ken_burns"){
+    const {w: bgW, h: bgH} = socialsScaledBgDims(1080, 1920);
+    bg.style.width = bgW + "px";
+    bg.style.height = bgH + "px";
+    socialsPanT0 = performance.now();
+    const tick = (now) => {
+      if(socialsState.animation !== "ken_burns"){ socialsPanRaf = null; return; }
+      const dur = Math.max(0.5, socialsState.panDuration || 10);
+      const t = (now - socialsPanT0) / 1000;
+      const phase = 2 * Math.PI * (t / dur);
+      // Match export: z oscillates 1.15 ↔ 1.40
+      const zMid = 1.275, zAmp = 0.125;
+      const zoom = zMid + zAmp * Math.cos(phase);
+      const driftX = 0.10 * Math.sin(phase) * SOCIALS_FRAME_W;
+      const driftY = 0.04 * Math.sin(phase + Math.PI / 3) * SOCIALS_FRAME_H;
+      bg.style.transform = `translate(calc(-50% + ${driftX.toFixed(2)}px), calc(-50% + ${driftY.toFixed(2)}px)) scale(${zoom.toFixed(4)})`;
+      socialsPanRaf = requestAnimationFrame(tick);
+    };
+    socialsPanRaf = requestAnimationFrame(tick);
+    return;
+  }
+
+  if(a === "zoom_pulse"){
+    const {w: bgW, h: bgH} = socialsScaledBgDims(1080, 1920);
+    bg.style.width = bgW + "px";
+    bg.style.height = bgH + "px";
+    socialsPanT0 = performance.now();
+    const tick = (now) => {
+      if(socialsState.animation !== "zoom_pulse"){ socialsPanRaf = null; return; }
+      const dur = Math.max(0.5, socialsState.panDuration || 10);
+      const t = (now - socialsPanT0) / 1000;
+      const phase = 2 * Math.PI * (t / dur);
+      // Match export: z oscillates 1.10 ↔ 1.35
+      const zMid = 1.225, zAmp = 0.125;
+      const zoom = zMid + zAmp * Math.cos(phase);
+      bg.style.transform = `translate(-50%, -50%) scale(${zoom.toFixed(4)})`;
+      socialsPanRaf = requestAnimationFrame(tick);
+    };
+    socialsPanRaf = requestAnimationFrame(tick);
+    return;
+  }
+
+  if(a === "colour_shift"){
+    const {w: bgW, h: bgH} = socialsScaledBgDims(1080, 1920);
+    bg.style.width = bgW + "px";
+    bg.style.height = bgH + "px";
+    bg.style.transform = "translate(-50%, -50%)";
+    socialsPanT0 = performance.now();
+    const tick = (now) => {
+      if(socialsState.animation !== "colour_shift"){ socialsPanRaf = null; return; }
+      const dur = Math.max(0.5, socialsState.panDuration || 10);
+      const t = (now - socialsPanT0) / 1000;
+      const hue = (360 * t / dur) % 360;
+      // Rebuild static filter each frame (cheap) so treatment changes are reflected
+      const f = [];
+      if(socialsState.bgTreatment === "inverted") f.push("invert(1)");
+      if(socialsState.bgTreatment === "bw") f.push("grayscale(1)");
+      const ovs = socialsState.overlays;
+      if(ovs.blur && ovs.blur.active) f.push(`blur(${(ovs.blur.intensity/100*20).toFixed(1)}px)`);
+      f.push(`hue-rotate(${hue.toFixed(1)}deg)`);
+      bg.style.filter = f.join(" ");
+      socialsPanRaf = requestAnimationFrame(tick);
+    };
+    socialsPanRaf = requestAnimationFrame(tick);
     return;
   }
 
@@ -1692,9 +1762,12 @@ window.addEventListener("load", () => {
 
   socialsSetupPills("socialsAnimType", v => {
     socialsState.animation = v;
-    document.getElementById("socialsStrobeControls").classList.toggle("hidden", v!=="strobe");
-    document.getElementById("socialsPanControls").classList.toggle("hidden", v!=="pan");
-    document.getElementById("socialsPathShapes").classList.toggle("hidden", v!=="pan");
+    const isPan = v === "pan";
+    const isStrobe = v === "strobe";
+    const hasDuration = isPan || v === "ken_burns" || v === "zoom_pulse" || v === "colour_shift";
+    document.getElementById("socialsStrobeControls").classList.toggle("hidden", !isStrobe);
+    document.getElementById("socialsPanControls").classList.toggle("hidden", !hasDuration);
+    document.getElementById("socialsPathShapes").classList.toggle("hidden", !isPan);
     applySocialsAnimation();
   });
 
@@ -1740,7 +1813,8 @@ window.addEventListener("load", () => {
     socialsState.panDuration = parseInt(e.target.value);
     document.getElementById("socialsPanDurVal").textContent = e.target.value + "s";
     document.documentElement.style.setProperty("--pan-dur", e.target.value + "s");
-    if(socialsState.animation === "pan") applySocialsBg();
+    const a = socialsState.animation;
+    if(a === "pan" || a === "ken_burns" || a === "zoom_pulse" || a === "colour_shift") applySocialsBg();
   });
 
   document.getElementById("socialsDur").addEventListener("input", e => {
