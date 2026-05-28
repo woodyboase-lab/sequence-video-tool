@@ -833,6 +833,7 @@ def _socials_build_filter(
     strobe_offset_x: float = 0.0,
     strobe_offset_y: float = 0.0,
     overlays: Optional[list] = None,
+    solid_colour: Optional[str] = None,  # hex colour e.g. "#1a1a2e" — fills full bg
 ) -> str:
     """
     Build the ffmpeg filter_complex string for the socials render.
@@ -1006,7 +1007,17 @@ def _socials_build_filter(
             f",crop={bg_w}:{bg_h}:'{x_expr}':'{y_expr}'[bg]"
         )
 
-    # 5) Compose
+    # 5) If solid colour background, replace the image bg with a flat colour fill.
+    # The image is still used for the fg square — only the background is replaced.
+    if solid_colour:
+        col_hex = (solid_colour or "#000000").lstrip("#")
+        if len(col_hex) == 3:
+            col_hex = "".join(c*2 for c in col_hex)
+        ffmpeg_col = f"0x{col_hex}"
+        # Override bg_chain: flat colour filling the full frame
+        bg_chain = f"color=c={ffmpeg_col}:s={bg_w}x{bg_h}:d={duration:.3f}[bg]"
+
+    # 6) Compose
     sx = (bg_w - shadow_outer) // 2
     sy = (bg_h - shadow_outer) // 2
     fx = (bg_w - fg_w) // 2
@@ -1014,7 +1025,7 @@ def _socials_build_filter(
 
     ovl = overlays or []
 
-    if is_strobe:
+    if is_strobe and not solid_colour:
         op = max(0.0, min(1.0, strobe_op))
         strobe = (
             f"color=c=black:s={bg_w}x{bg_h}:d={duration:.3f},"
@@ -1031,7 +1042,7 @@ def _socials_build_filter(
         )
         return f"{bg_chain};{fg_chain};{shadow_chain};{strobe};{ov_chain};{compose}"
 
-    # No strobe: bg → overlays → shadow → fg
+    # No strobe (or solid colour): bg → overlays → shadow → fg
     ov_chain = _socials_overlay_chain(ovl, "bg", "bgo", duration)
     compose = (
         f"[bgo][shadow]overlay={sx}:{sy}:format=auto[bgs];"
@@ -1040,114 +1051,127 @@ def _socials_build_filter(
     return f"{bg_chain};{fg_chain};{shadow_chain};{ov_chain};{compose}"
 
 
-def _add_waveform_title(
-    waveform_path: Path,
-    title: str,
-    font_size: int,
-    text_align: str,
-    frame_w: int,
-    pad: int,
+# ── Colour presets ────────────────────────────────────────────────────────────
+TRACKLIST_COLOURS: Dict[str, Tuple[int,int,int]] = {
+    "white":   (220, 220, 220),
+    "grey":    ( 90,  90,  90),
+    "red":     (180,  40,  40),
+    "blue":    ( 50, 100, 200),
+    "green":   ( 40, 160,  80),
+    "yellow":  (200, 180,  30),
+    "orange":  (210,  90,  20),
+    "purple":  (130,  60, 180),
+}
+_TL_FONTS = [
+    "/System/Library/Fonts/Menlo.ttc",
+    "/System/Library/Fonts/Monaco.ttf",
+    "/System/Library/Fonts/Courier New.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+]
+
+def _tl_lighten(rgb: Tuple[int,int,int], alpha: float = 0.55) -> Tuple[int,int,int]:
+    """Blend rgb toward white at `alpha` — same hue, just lighter."""
+    return tuple(min(255, int(c + (255 - c) * alpha)) for c in rgb)  # type: ignore
+
+def _tl_load_font(size: int):
+    from PIL import ImageFont
+    for p in _TL_FONTS:
+        try: return ImageFont.truetype(p, size)
+        except: pass
+    return ImageFont.load_default()
+
+
+def render_tracklist_png(
+    out_path: Path,
+    tracks: List[Dict],
+    playing_idx: int,
+    base_rgb: Tuple[int,int,int],
+    light_rgb: Tuple[int,int,int],
+    bottom_offset: int = 255,
+    font_size: int = 29,
+    bar_h: int = 18,
+    line_h: int = 36,
+    gap: int = 11,
 ) -> Path:
     """
-    Draw the song title above the waveform PNG using Pillow.
-    Returns path to the new combined PNG (replaces waveform_path in-place).
-    Works on any ffmpeg build (no drawtext needed).
+    Render a static RGBA overlay PNG:
+      - DARK bar only (full width 70% centred) — the animated light fill is
+        added separately by drawbox in the ffmpeg filter, so we must NOT draw
+        the light bar here.
+      - Tracklist text below the bar.
+    Layout mirrors the phone-frame preview (70% width, 15% padding each side).
     """
-    if not title:
-        return waveform_path
-    try:
-        from PIL import Image, ImageDraw, ImageFont
-        wave_img = Image.open(waveform_path).convert("RGBA")
-        ww, wh = wave_img.size
-        title_h = font_size + 12
-        # Create a taller canvas: title on top, waveform below
-        canvas = Image.new("RGBA", (ww, wh + title_h), (0, 0, 0, 0))
-        canvas.paste(wave_img, (0, title_h))
-        draw = ImageDraw.Draw(canvas)
-        # Try to load a system font, fall back to default
-        try:
-            font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", font_size)
-        except Exception:
-            try:
-                font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", font_size)
-            except Exception:
-                font = ImageFont.load_default()
-        # Measure text
-        bbox = draw.textbbox((0, 0), title, font=font)
-        tw = bbox[2] - bbox[0]
-        if text_align == "centre":
-            tx = (ww - tw) // 2
-        elif text_align == "right":
-            tx = ww - tw - pad
-        else:
-            tx = pad
-        draw.text((tx, 4), title, font=font, fill=(255, 255, 255, 217))
-        canvas.save(waveform_path)
-    except Exception as e:
-        pass  # If anything fails, skip the title rather than crash
-    return waveform_path
+    from PIL import Image, ImageDraw
+    FW, FH = SOCIALS_W, SOCIALS_H
+    PAD = int(FW * 0.15)          # 162px each side → 70% wide content area
+    img  = Image.new("RGBA", (FW, FH), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    font_b = _tl_load_font(font_size)
+    font_d = _tl_load_font(font_size)  # same size, weight difference handled by bold font if available
+    cw    = FW - 2 * PAD          # 756px
+    bar_y = FH - bottom_offset
+
+    # Dark background bar only — light fill will be animated by drawbox
+    draw.rectangle([PAD, bar_y, PAD + cw, bar_y + bar_h], fill=(*base_rgb, 180))
+
+    # Tracklist text rows
+    ty = bar_y + bar_h + gap
+    for i, tr in enumerate(tracks):
+        playing = (i == playing_idx)
+        col  = (*light_rgb, 245) if playing else (*base_rgb, 200)
+        fnt  = font_b if playing else font_d
+        tid  = tr.get("id", "")
+        name = tr.get("name", "")
+        dur  = tr.get("dur", "")
+        label = f"[{tid}]"
+        draw.text((PAD, ty), label, font=fnt, fill=col)
+        lw = draw.textlength(label, font=fnt)
+        draw.text((PAD + lw, ty), f"  {name}", font=fnt, fill=col)
+        if dur:
+            draw.text((PAD + cw, ty), dur, font=fnt, fill=col, anchor="ra")
+        ty += line_h
+
+    img.save(out_path)
+    return out_path
 
 
-def _socials_append_waveform(
+def _socials_append_tracklist(
     base_fc: str,
-    wave_input_idx: int,
+    tl_input_idx: int,
     in_label: str,
     out_label: str,
-    seg_start: float,
     seg_len: float,
-    total_dur: float,
-    strip_h: int,
-    title: str,
-    duration: float,
-    waveform_scale: int = 100,
-    font_size: int = 22,
-    text_align: str = "left",
-    line_input_idx: Optional[int] = None,
+    bottom_offset: int,
+    bar_h: int,
+    light_rgb: Tuple[int, int, int],
 ) -> str:
     """
-    Append waveform overlay filters.
-    The red playhead line is an explicit input at line_input_idx (a lavfi color source).
-    Using an explicit input is more portable than an inline color= source in filter_complex.
+    Overlay the static tracklist PNG (dark bar + text) then animate a growing
+    light-fill bar using scale with eval=frame so width updates per-frame.
     """
-    fw, fh = SOCIALS_W, SOCIALS_H
-    pad = 30
-    bottom_gap = max(40, strip_h)
-    scale_pct = max(10, min(100, waveform_scale))
-    wave_w_max = min(1000, fw - 2 * pad)   # hard cap at 1000px
-    wave_w = max(40, int(wave_w_max * scale_pct / 100))
-    wave_h = max(10, int(100 * scale_pct / 100))
-    title_h = font_size + 12 if title else 0
+    FW, FH = SOCIALS_W, SOCIALS_H
+    PAD   = int(FW * 0.15)
+    cw    = FW - 2 * PAD      # 756px
+    bar_y = FH - bottom_offset
+    seg_s = max(0.001, float(seg_len))
+    r, g, b = light_rgb
 
-    # Waveform always centred horizontally in the frame
-    x_off = (fw - wave_w) // 2
+    # scale filter supports eval=frame and can reference `t` via the `out_t` variable.
+    # We use a 1x1 colour source scaled up to growing width each frame.
+    # out_w expression: min(cw, cw*t/seg_s), must be even, min 2px
+    scale_w = f"max(2\\,min({cw}\\,trunc({cw}*t/{seg_s:.6f})))"
 
-    wave_y_base = fh - bottom_gap - wave_h
-    img_y = wave_y_base - title_h
-    wave_y = wave_y_base
-
-    seg_len_s = max(0.001, seg_len)
-    ph_speed = wave_w / seg_len_s
-
-    font_size = max(14, min(48, font_size))
-
-    parts: List[str] = [base_fc]
-
-    # 1) Overlay waveform PNG at x_off (alignment-aware), img_y (title+waveform stacked)
-    parts.append(f"[{in_label}][{wave_input_idx}:v]overlay={x_off}:{img_y}[wf1]")
-
-    # 2) Red playhead line at animated x, starting from x_off
-    if line_input_idx is not None:
-        parts.append(
-            f"[wf1][{line_input_idx}:v]overlay=x='{x_off}+{ph_speed:.4f}*t':y={wave_y}[wf2]"
-        )
-    else:
-        parts.append(f"color=c=red:s=2x{wave_h}:d={seg_len_s:.3f}[redline]")
-        parts.append(f"[wf1][redline]overlay=x='{x_off}+{ph_speed:.4f}*t':y={wave_y}[wf2]")
-
-    # 3) Song title — drawn onto the waveform PNG via Pillow (no drawtext needed)
-    # Title compositing happens before the ffmpeg render in _add_waveform_title().
-    parts.append(f"[wf2]copy[{out_label}]")
-
+    parts = [base_fc]
+    parts.append(f"[{in_label}][{tl_input_idx}:v]overlay=0:0[tl1]")
+    parts.append(
+        f"color=c=#{r:02x}{g:02x}{b:02x}:s=2x{bar_h}:d={seg_s:.3f}[fillsrc]"
+    )
+    parts.append(
+        f"[fillsrc]scale=w='{scale_w}':h={bar_h}:eval=frame[fillscaled]"
+    )
+    parts.append(
+        f"[tl1][fillscaled]overlay=x={PAD}:y={bar_y}:format=auto[{out_label}]"
+    )
     return ";".join(parts)
 
 
@@ -1187,16 +1211,30 @@ def _run_socials_render_job(job_id: str, data: dict) -> None:
                     overlays.append({k: v for k, v in ov.items()
                                      if k in ("type","intensity","block_size","strength")})
 
-        # Waveform overlay (requires audio)
-        use_waveform = bool(data.get("use_waveform", False))
-        waveform_title = str(data.get("waveform_title") or "").strip()[:80]
-        waveform_height = max(60, min(500, int(_safe_float(data.get("waveform_height"), 100))))
-        waveform_scale  = max(10, min(100, int(_safe_float(data.get("waveform_scale"), 100))))
-        waveform_font   = max(14, min(48,  int(_safe_float(data.get("waveform_font_size"), 22))))
-        waveform_align  = (data.get("waveform_align") or "left").strip().lower()
-        if waveform_align not in ("left", "centre", "right"): waveform_align = "left"
-        # Actual bar height used for waveform image generation
-        wave_bar_h = max(20, int(100 * waveform_scale / 100))
+        # Solid colour background (replaces image bg with flat colour)
+        solid_colour_raw = data.get("solid_colour") or None
+        solid_colour: Optional[str] = None
+        if solid_colour_raw and isinstance(solid_colour_raw, str):
+            sc = solid_colour_raw.strip()
+            if sc.startswith("#") and len(sc) in (4, 7):
+                solid_colour = sc
+
+        # Tracklist overlay (requires audio)
+        use_tracklist  = bool(data.get("use_tracklist", False))
+        tl_colour_key  = (data.get("tl_colour") or "grey").strip().lower()
+        tl_base_rgb    = TRACKLIST_COLOURS.get(tl_colour_key, TRACKLIST_COLOURS["grey"])
+        tl_light_rgb   = _tl_lighten(tl_base_rgb)
+        tl_bottom      = max(60, min(900, int(_safe_float(data.get("tl_bottom"), 255))))
+        tl_font_size   = max(14, min(60, int(_safe_float(data.get("tl_font_size"), 29))))
+        tl_bar_h       = max(2, min(40, int(_safe_float(data.get("tl_bar_h"), 18))))
+        tl_line_h      = max(20, min(100, int(_safe_float(data.get("tl_line_h"), 36))))
+        raw_tracks     = data.get("tl_tracks") or []
+        tl_tracks      = [{"id": str(t.get("id",""))[:8],
+                           "name": str(t.get("name",""))[:60],
+                           "dur":  str(t.get("dur",""))[:10]}
+                          for t in raw_tracks if isinstance(t, dict)][:20]
+        tl_playing_idx = max(0, min(len(tl_tracks)-1 if tl_tracks else 0,
+                                    int(_safe_float(data.get("tl_playing_idx"), 0))))
 
         # Audio (optional). If present, audio segment drives the duration.
         use_audio = bool(data.get("use_audio", False))
@@ -1205,9 +1243,8 @@ def _run_socials_render_job(job_id: str, data: dict) -> None:
             job["status"] = "error"; job["error"] = "Audio enabled but no audio uploaded."
             _write_job(job_id, job); return
 
-        # Waveform also requires audio
-        if use_waveform and not audio_path:
-            use_waveform = False
+        if use_tracklist and not audio_path:
+            use_tracklist = False
 
         if use_audio:
             seg_len = max(0.5, _safe_float(data.get("segment_length_sec"), 15.0))
@@ -1217,41 +1254,22 @@ def _run_socials_render_job(job_id: str, data: dict) -> None:
             seg_len = 0.0; seg_start = 0.0
             duration = max(0.5, _safe_float(data.get("duration"), 8.0))
 
-        # Pre-render waveform image if requested
-        waveform_img_path: Optional[Path] = None
-        total_audio_dur = 0.0
-        if use_waveform and audio_path is not None:
-            total_audio_dur = audio_duration(audio_path)
+        # Pre-render tracklist PNG if requested
+        tl_img_path: Optional[Path] = None
+        if use_tracklist and tl_tracks:
             render_out = RENDER_DIR / session_id / "SOCIALS"
             render_out.mkdir(parents=True, exist_ok=True)
-            waveform_img_path = render_out / "waveform.png"
-            _w_max = min(1000, SOCIALS_W - 60)
-            _w = max(40, int(_w_max * waveform_scale / 100))
-            _h = wave_bar_h
-            wr = subprocess.run([
-                FFMPEG, "-y",
-                "-ss", str(seg_start), "-t", str(seg_len),
-                "-i", str(audio_path),
-                "-filter_complex",
-                (f"showwavespic=s={_w*4}x{_h*4}:"
-                 f"colors=0xffffff:split_channels=0:scale=cbrt:draw=full:filter=average,"
-                 f"scale={_w}:{_h}:flags=lanczos"),
-                str(waveform_img_path)
-            ], capture_output=True, text=True)
-            if wr.returncode != 0:
-                print(f"\n=== WAVEFORM PRE-RENDER ERROR ===\n{wr.stderr[-600:]}\n===", flush=True)
-                job["error"] = f"Waveform pre-render failed: {(wr.stderr or '')[-400:]}"
-                _write_job(job_id, job)
-                waveform_img_path = None
-            elif waveform_title:
-                # Bake title text into the waveform PNG using Pillow (no drawtext needed)
-                _add_waveform_title(
-                    waveform_img_path, waveform_title,
-                    font_size=waveform_font,
-                    text_align=waveform_align,
-                    frame_w=SOCIALS_W,
-                    pad=30,
+            tl_img_path = render_out / "tracklist.png"
+            try:
+                render_tracklist_png(
+                    tl_img_path, tl_tracks, tl_playing_idx,
+                    tl_base_rgb, tl_light_rgb,
+                    bottom_offset=tl_bottom, font_size=tl_font_size,
+                    bar_h=tl_bar_h, line_h=tl_line_h,
                 )
+            except Exception as e:
+                print(f"Tracklist PNG render error: {e}", flush=True)
+                tl_img_path = None
 
         render_out = RENDER_DIR / session_id / "SOCIALS"
         render_out.mkdir(parents=True, exist_ok=True)
@@ -1273,6 +1291,7 @@ def _run_socials_render_job(job_id: str, data: dict) -> None:
             strobe_offset_x=strobe_off_x,
             strobe_offset_y=strobe_off_y,
             overlays=overlays,
+            solid_colour=solid_colour,
         )
 
         base_name = image_path.stem.replace("image_", "")
@@ -1287,40 +1306,27 @@ def _run_socials_render_job(job_id: str, data: dict) -> None:
             _write_job(job_id, job)
             v_idx = len(job["videos"]) - 1
 
-            # Build inputs: [0]=image, [1]=audio (optional), [N]=waveform_img (optional)
+            # Build inputs: [0]=image, [1]=audio (optional), [N]=tracklist PNG
             cmd: List[str] = [FFMPEG, "-y", "-loop", "1", "-i", str(image_path)]
             audio_input_idx = None
-            wave_input_idx = None
+            tl_input_idx    = None
 
             if use_audio and audio_path is not None:
                 cmd += ["-ss", f"{seg_start}", "-t", f"{seg_len}", "-i", str(audio_path)]
                 audio_input_idx = 1
 
-            if waveform_img_path is not None and waveform_img_path.exists():
-                cmd += ["-loop", "1", "-i", str(waveform_img_path)]
-                wave_input_idx = 2 if audio_input_idx == 1 else 1
+            if tl_img_path is not None and tl_img_path.exists():
+                cmd += ["-loop", "1", "-i", str(tl_img_path)]
+                tl_input_idx = 2 if audio_input_idx == 1 else 1
 
-            # Add red line as explicit lavfi input (more portable than inline color= source)
-            line_input_idx = None
-            if wave_input_idx is not None:
-                wave_h_actual = max(20, int(100 * waveform_scale / 100))
-                cmd += ["-f", "lavfi", "-i", f"color=c=red:s=2x{wave_h_actual}"]
-                line_input_idx = (wave_input_idx or 0) + 1
-
-            # Extend filter graph with waveform overlay if needed
-            if wave_input_idx is not None and total_audio_dur > 0:
-                fc_final = _socials_append_waveform(
-                    fc, wave_input_idx, "outv", "outv_wave",
-                    seg_start=seg_start, seg_len=seg_len,
-                    total_dur=total_audio_dur,
-                    strip_h=waveform_height, title=waveform_title,
-                    duration=duration,
-                    waveform_scale=waveform_scale,
-                    font_size=waveform_font,
-                    text_align=waveform_align,
-                    line_input_idx=line_input_idx,
+            # Extend filter graph with tracklist overlay if needed
+            if tl_input_idx is not None:
+                fc_final = _socials_append_tracklist(
+                    fc, tl_input_idx, "outv", "outv_tl",
+                    seg_len=seg_len, bottom_offset=tl_bottom, bar_h=tl_bar_h,
+                    light_rgb=tl_light_rgb,
                 )
-                out_label = "outv_wave"
+                out_label = "outv_tl"
             else:
                 fc_final = fc
                 out_label = "outv"

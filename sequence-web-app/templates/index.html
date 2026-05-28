@@ -21,7 +21,7 @@
     }
     html{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;}
     body{min-height:100vh;background:var(--bg);background-image:radial-gradient(ellipse 80% 40% at 50% -10%,rgba(232,255,71,0.06) 0%,transparent 70%);}
-    .shell{max-width:740px;margin:0 auto;padding:0 20px 80px;}
+    .shell{max-width:960px;margin:0 auto;padding:0 20px 80px;}
     header{padding:40px 0 36px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);margin-bottom:32px;}
     .logo{display:flex;align-items:center;gap:12px;}
     .logo-mark{width:34px;height:34px;background:var(--accent);border-radius:8px;display:flex;align-items:center;justify-content:center;}
@@ -144,8 +144,8 @@
     input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:3px;background:var(--border);border-radius:2px;outline:none;}
     input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;background:var(--accent);border-radius:50%;cursor:pointer;border:2px solid var(--bg);}
     input[type=range]::-moz-range-thumb{width:14px;height:14px;background:var(--accent);border-radius:50%;cursor:pointer;border:2px solid var(--bg);}
-    .socials-layout{display:grid;grid-template-columns:1fr 340px;gap:10px;align-items:start;}
-    @media(max-width:760px){.socials-layout{grid-template-columns:1fr;}}
+    .socials-layout{display:grid;grid-template-columns:1fr 400px;gap:16px;align-items:start;}
+    @media(max-width:900px){.socials-layout{grid-template-columns:1fr;}}
     .preview-wrap{display:flex;align-items:center;justify-content:center;padding:20px;background:var(--surface2);border-radius:var(--radius-sm);min-height:614px;}
     .phone-frame{position:relative;width:300px;height:534px;border-radius:16px;overflow:hidden;background:#222;box-shadow:0 12px 40px rgba(0,0,0,0.6),0 0 0 1px rgba(255,255,255,0.04);}
     .phone-frame.empty::after{content:"Upload a square image to preview";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--text-dim);font-family:var(--mono);font-size:11px;text-align:center;padding:20px;}
@@ -192,6 +192,13 @@
     .wf-mini-preview{position:relative;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:6px;height:70px;overflow:hidden;flex-shrink:0;}
     .waveform-section-disabled{opacity:0.45;pointer-events:none;transition:opacity 0.2s;}
     .waveform-section-disabled.wf-enabled{opacity:1;pointer-events:auto;}
+    .tl-colour-btn{padding:5px 10px;border:2px solid transparent;border-radius:5px;font-size:11px;font-weight:600;color:#fff;cursor:pointer;letter-spacing:0.3px;}
+    .tl-colour-btn.active{border-color:#fff;outline:none;}
+    .tl-track-row{display:grid;grid-template-columns:54px 1fr 60px 22px;gap:4px;align-items:center;}
+    .tl-track-row input{padding:5px 6px;font-size:12px;font-family:var(--mono);}
+    .tl-track-row .rm-btn{background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px;padding:0;line-height:1;}
+    .tl-track-row .rm-btn:hover{color:var(--danger);}
+    .preview-tl-row{width:70%;margin:0 auto;font-family:var(--mono);font-size:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;justify-content:space-between;}
     .fg-square{position:absolute;width:68%;aspect-ratio:1;left:50%;top:50%;transform:translate(-50%,-50%);background-size:cover;background-position:center;box-shadow:0 0 40px 8px rgba(0,0,0,0.45);z-index:2;}
     .path-shape-group{display:flex;gap:8px;}
     .path-shape-btn{display:inline-flex;align-items:center;justify-content:center;width:56px;height:48px;background:#1a1a1a;border:1px solid #2a2a2a;border-radius:8px;color:#888;cursor:pointer;transition:all 0.15s;padding:0;}
@@ -251,6 +258,24 @@
           <div class="pill active" data-v="normal">Normal</div>
           <div class="pill" data-v="inverted">Inverted</div>
           <div class="pill" data-v="bw">Black &amp; White</div>
+          <div class="pill" data-v="solid">Solid Colour</div>
+        </div>
+        <div class="hidden" id="socialsSolidColourWrap" style="margin-top:12px;">
+          <div class="pill-group" id="socialsSolidSwatches">
+            <div class="pill active" data-colour="#000000" style="border-color:#555;">⬛ Black</div>
+            <div class="pill" data-colour="#ffffff" style="color:#999;">⬜ White</div>
+            <div class="pill" data-colour="#1a1a2e">🟦 Navy</div>
+            <div class="pill" data-colour="#2d1b69">🟣 Purple</div>
+            <div class="pill" data-colour="#0a2e0a">🟩 Forest</div>
+            <div class="pill" data-colour="#2e0a0a">🟥 Crimson</div>
+            <div class="pill" data-colour="#1a1200">🟨 Midnight</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;margin-top:10px;">
+            <label style="font-size:12px;color:var(--text-muted);font-family:var(--mono);">Custom:</label>
+            <input type="color" id="socialsSolidCustom" value="#000000"
+                   style="width:40px;height:28px;border-radius:5px;border:1px solid var(--border);cursor:pointer;background:none;"
+                   oninput="onSolidColourCustom(this.value)">
+          </div>
         </div>
 
         <div class="divider"></div>
@@ -398,14 +423,14 @@
             <div class="ov-layer" id="socialsOvScanlines"></div>
             <div class="ov-layer" id="socialsOvLightleak"></div>
             <div class="fg-square" id="socialsFgSquare"></div>
-            <!-- Waveform preview strip — shown when waveform is enabled -->
+            <!-- Tracklist overlay preview -->
             <div id="socialsWavePreview" style="display:none;position:absolute;left:0;right:0;pointer-events:none;z-index:3;bottom:63px;">
-              <div id="socialsWavePreviewPanel" style="padding:0 7px;">
-                <div id="socialsWavePreviewTitle" style="font-size:7px;color:rgba(255,255,255,0.8);margin-bottom:3px;font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:none;"></div>
-                <div id="socialsWavePreviewTrack" style="position:relative;overflow:hidden;height:27px;">
-                  <canvas id="socialsWavePreviewCanvas" style="display:block;width:100%;height:100%;"></canvas>
-                  <div id="socialsWavePreviewLine" style="position:absolute;top:0;height:100%;width:1px;background:rgba(220,40,40,0.95);left:0;display:none;"></div>
+              <div style="padding:0 7px;">
+                <div id="socialsPreviewBar" style="position:relative;width:70%;height:5px;margin:0 auto 3px auto;">
+                  <div id="socialsPreviewBarBg" style="position:absolute;inset:0;"></div>
+                  <div id="socialsPreviewBarFill" style="position:absolute;top:0;left:0;height:100%;width:0%;"></div>
                 </div>
+                <div id="socialsPreviewTracklist" style="display:flex;flex-direction:column;gap:1px;"></div>
               </div>
             </div>
           </div>
@@ -427,58 +452,55 @@
 
         <!-- Waveform Overlay — lives in the right column, below the phone preview -->
         <div id="socialsWaveformSection" class="audio-track-card" style="display:none;margin-top:10px;">
-          <div class="card-sublabel">Waveform Overlay</div>
+          <div class="card-sublabel">Tracklist Overlay</div>
           <label class="check-row" style="margin-bottom:0;">
-            <input type="checkbox" id="socialsWaveformToggle" onchange="onSocialsWaveformToggle()">
+            <input type="checkbox" id="socialsWaveformToggle" onchange="onSocialsTracklistToggle()">
             <span class="check-box"></span>
             <div>
-              <div class="check-label">Add waveform to video</div>
-              <div class="check-sub">Selected segment · red playhead</div>
+              <div class="check-label">Add tracklist to video</div>
+              <div class="check-sub">Progress bar · track list · fills as clip plays</div>
             </div>
           </label>
-          <div class="hidden" id="socialsWaveformWrap" style="margin-top:12px;display:flex;flex-direction:column;gap:12px;">
-            <div class="wf-mini-preview" id="socialsWfMiniWrap">
-              <canvas id="socialsWfMiniCanvas" style="display:block;width:100%;height:100%;"></canvas>
-              <div id="socialsWfMiniLine" style="position:absolute;top:0;bottom:0;width:1px;background:rgba(220,40,40,0.9);left:0;display:none;"></div>
+
+          <div class="hidden" id="socialsWaveformWrap" style="margin-top:12px;display:flex;flex-direction:column;gap:14px;">
+
+            <!-- Colour presets -->
+            <div>
+              <div class="slider-row" style="margin-bottom:8px;"><span>Colour</span></div>
+              <div style="display:flex;flex-wrap:wrap;gap:6px;" id="socialsTracklistColours">
+                <button class="tl-colour-btn active" data-c="grey"   style="background:#5a5a5a;">Grey</button>
+                <button class="tl-colour-btn" data-c="white"  style="background:#dcdcdc;color:#111;">White</button>
+                <button class="tl-colour-btn" data-c="red"    style="background:#b42828;">Red</button>
+                <button class="tl-colour-btn" data-c="blue"   style="background:#3264c8;">Blue</button>
+                <button class="tl-colour-btn" data-c="green"  style="background:#28a050;">Green</button>
+                <button class="tl-colour-btn" data-c="yellow" style="background:#c8b41e;color:#111;">Yellow</button>
+                <button class="tl-colour-btn" data-c="orange" style="background:#d25a14;">Orange</button>
+                <button class="tl-colour-btn" data-c="purple" style="background:#823cb4;">Purple</button>
+              </div>
             </div>
 
-            <!-- Song title + alignment -->
+            <!-- Tracks input -->
+            <div>
+              <div class="slider-row" style="margin-bottom:8px;"><span>Tracks</span></div>
+              <div id="socialsTrackRows" style="display:flex;flex-direction:column;gap:6px;"></div>
+              <button onclick="socialsAddTrackRow()" style="margin-top:8px;width:100%;padding:7px;background:var(--surface2);border:1px dashed var(--border);border-radius:6px;color:var(--text-muted);font-size:12px;cursor:pointer;">+ Add track</button>
+            </div>
+
+            <!-- Playing track -->
             <div class="field" style="margin:0;">
-              <label>Song title <span style="opacity:0.5;font-weight:400;">(optional)</span></label>
-              <input type="text" id="socialsWaveformTitle" placeholder="Artist — Track name" maxlength="80"
-                     oninput="onSocialsWaveformTitleInput()">
+              <label>Playing track</label>
+              <select id="socialsTracklistPlaying" onchange="socialsOnPlayingChange()" style="width:100%;">
+                <option value="0">—</option>
+              </select>
             </div>
 
-            <!-- Text alignment — full width -->
+            <!-- Position from bottom -->
             <div>
-              <div class="slider-row" style="margin-bottom:8px;"><span>Text alignment</span></div>
-              <div class="pill-group" id="socialsWaveformAlign" style="gap:4px;">
-                <div class="pill active" data-v="left" style="flex:1;padding:6px 4px;font-size:11px;">Left</div>
-                <div class="pill" data-v="centre" style="flex:1;padding:6px 4px;font-size:11px;">Centre</div>
-                <div class="pill" data-v="right" style="flex:1;padding:6px 4px;font-size:11px;">Right</div>
-              </div>
+              <div class="slider-row"><span>Position from bottom</span><span class="val" id="socialsTracklistBottomVal">255px</span></div>
+              <input type="range" min="60" max="900" value="255" id="socialsTracklistBottom"
+                     oninput="socialsOnBottomChange(this.value)">
             </div>
 
-            <!-- Text size + waveform scale on one row -->
-            <div class="grid2" style="gap:10px;">
-              <div>
-                <div class="slider-row"><span>Text size</span><span class="val" id="socialsWaveformFontVal">22px</span></div>
-                <input type="range" min="14" max="48" value="22" id="socialsWaveformFont"
-                       oninput="onSocialsWaveformFontChange(this.value)">
-              </div>
-              <div>
-                <div class="slider-row"><span>Waveform scale</span><span class="val" id="socialsWaveformScaleVal">100%</span></div>
-                <input type="range" min="10" max="100" value="100" id="socialsWaveformScale"
-                       oninput="onSocialsWaveformScaleChange(this.value)">
-              </div>
-            </div>
-
-            <!-- Position from bottom — full width -->
-            <div>
-              <div class="slider-row"><span>Position from bottom</span><span class="val" id="socialsWaveformHeightVal">100px</span></div>
-              <input type="range" min="60" max="400" value="100" id="socialsWaveformHeight"
-                     oninput="onSocialsWaveformHeightChange(this.value)">
-            </div>
           </div>
         </div>
 
@@ -1025,6 +1047,7 @@ let socialsState = {
   imageW: 0,
   imageH: 0,
   bgTreatment: "normal",
+  solidColour: "#000000",
   animation: "none",
   panShape: "horizontal",
   strobeOpacity: 60,
@@ -1174,304 +1197,198 @@ function socialsOverlaysToPayload(){
 }
 
 // ---------------------------------------------------------------------------
-// Waveform overlay
+// Tracklist overlay
 // ---------------------------------------------------------------------------
-let socialsWaveformState = {
-  enabled: false,
-  title: "",
-  height: 100,
-  scale: 100,
-  fontSize: 22,
-  align: "left",
-  _rafId: null,
-  _miniRafId: null,
+
+// Colour map mirrors Python TRACKLIST_COLOURS
+const TL_COLOURS = {
+  grey:   [90,  90,  90],
+  white:  [220, 220, 220],
+  red:    [180,  40,  40],
+  blue:   [ 50, 100, 200],
+  green:  [ 40, 160,  80],
+  yellow: [200, 180,  30],
+  orange: [210,  90,  20],
+  purple: [130,  60, 180],
+};
+function tlLighten([r,g,b], f=2.8){ return [Math.min(255,r*f|0), Math.min(255,g*f|0), Math.min(255,b*f|0)]; }
+function tlRgbCss([r,g,b], a=1){ return `rgba(${r},${g},${b},${a})`; }
+
+let socialsTracklistState = {
+  enabled:    false,
+  colour:     "grey",
+  tracks:     [],          // [{id,name,dur}, ...]
+  playingIdx: 0,
+  bottom:     255,
+  _rafId:     null,
   _startTime: null,
 };
+let _tlNextId = 1;
 
-function onSocialsWaveformToggle(){
+// ── Toggle ────────────────────────────────────────────────────────────────────
+function onSocialsTracklistToggle(){
   const on = document.getElementById("socialsWaveformToggle").checked;
-  socialsWaveformState.enabled = on;
+  socialsTracklistState.enabled = on;
   document.getElementById("socialsWaveformWrap").classList.toggle("hidden", !on);
-  if(on) socialsDrawMiniWaveform(true);
-  else   socialsDrawMiniWaveform(false);
-  socialsUpdateWaveformPreview();
+  socialsRenderTracklistPreview();
 }
 
-function onSocialsWaveformTitleInput(){
-  socialsWaveformState.title = document.getElementById("socialsWaveformTitle").value;
-  socialsUpdateWaveformPreview();
-}
-
-function onSocialsWaveformHeightChange(val){
-  socialsWaveformState.height = parseInt(val);
-  document.getElementById("socialsWaveformHeightVal").textContent = val + "px";
-  const previewBottom = Math.round(parseInt(val) * (100/400));
-  const preview = document.getElementById("socialsWavePreview");
-  if(preview) preview.style.bottom = previewBottom + "px";
-  socialsUpdateWaveformPreview();
-}
-
-function onSocialsWaveformScaleChange(val){
-  socialsWaveformState.scale = parseInt(val);
-  document.getElementById("socialsWaveformScaleVal").textContent = val + "%";
-  // Heights stay fixed — scale only affects x-axis (canvas drawing width)
-  socialsUpdateWaveformPreview();
-}
-
-function onSocialsWaveformFontChange(val){
-  socialsWaveformState.fontSize = parseInt(val);
-  document.getElementById("socialsWaveformFontVal").textContent = val + "px";
-  // Update title in phone preview
-  const titleEl = document.getElementById("socialsWavePreviewTitle");
-  if(titleEl) titleEl.style.fontSize = Math.round(parseInt(val) * (7/22)) + "px";
-}
-
-function socialsInitWaveformAlignPills(){
-  socialsSetupPills("socialsWaveformAlign", v => {
-    socialsWaveformState.align = v;
-    socialsDrawMiniWaveform(socialsWaveformState.enabled);
-    // Recompute title position in phone preview
-    socialsUpdateWaveformPreview();
+// ── Colour buttons ────────────────────────────────────────────────────────────
+function socialsInitTracklistColours(){
+  document.querySelectorAll(".tl-colour-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".tl-colour-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      socialsTracklistState.colour = btn.dataset.c;
+      socialsRenderTracklistPreview();
+    });
   });
 }
 
-// Called when audio is uploaded or cleared to show/hide the waveform section
+// ── Track rows ────────────────────────────────────────────────────────────────
+function socialsAddTrackRow(id="", name="", dur=""){
+  const uid = _tlNextId++;
+  const row = document.createElement("div");
+  row.className = "tl-track-row";
+  row.dataset.uid = uid;
+  row.innerHTML = `
+    <input type="text" placeholder="A1" maxlength="8" value="${id}"
+           oninput="socialsTrackRowChanged()" style="text-align:center;">
+    <input type="text" placeholder="Track name" maxlength="60" value="${name}"
+           oninput="socialsTrackRowChanged()">
+    <input type="text" placeholder="05:26" maxlength="10" value="${dur}"
+           oninput="socialsTrackRowChanged()" style="text-align:center;">
+    <button class="rm-btn" onclick="socialsRemoveTrackRow(${uid})">×</button>
+  `;
+  document.getElementById("socialsTrackRows").appendChild(row);
+  socialsTrackRowChanged();
+}
+
+function socialsRemoveTrackRow(uid){
+  const row = document.querySelector(`.tl-track-row[data-uid="${uid}"]`);
+  if(row) row.remove();
+  socialsTrackRowChanged();
+}
+
+function socialsTrackRowChanged(){
+  socialsTracklistState.tracks = socialsGetTracks();
+  socialsUpdatePlayingDropdown();
+  socialsRenderTracklistPreview();
+}
+
+function socialsGetTracks(){
+  return [...document.querySelectorAll(".tl-track-row")].map(row => {
+    const ins = row.querySelectorAll("input");
+    return { id: ins[0].value.trim(), name: ins[1].value.trim(), dur: ins[2].value.trim() };
+  }).filter(t => t.name);
+}
+
+function socialsUpdatePlayingDropdown(){
+  const sel = document.getElementById("socialsTracklistPlaying");
+  const cur = parseInt(sel.value) || 0;
+  const tracks = socialsGetTracks();
+  sel.innerHTML = tracks.map((t,i) =>
+    `<option value="${i}" ${i===cur?'selected':''}>[${t.id||'?'}] ${t.name}</option>`
+  ).join('') || '<option value="0">—</option>';
+  socialsTracklistState.playingIdx = parseInt(sel.value) || 0;
+}
+
+function socialsOnPlayingChange(){
+  socialsTracklistState.playingIdx = parseInt(document.getElementById("socialsTracklistPlaying").value) || 0;
+  socialsRenderTracklistPreview();
+}
+
+// ── Position slider ───────────────────────────────────────────────────────────
+function socialsOnBottomChange(val){
+  socialsTracklistState.bottom = parseInt(val);
+  document.getElementById("socialsTracklistBottomVal").textContent = val + "px";
+  // Map export bottom_offset (60-900px) to preview bottom CSS
+  // Export frame is 1920px tall. Preview frame is 534px. Scale = 534/1920
+  const previewBottom = Math.round(parseInt(val) * (534/1920));
+  const prev = document.getElementById("socialsWavePreview");
+  if(prev) prev.style.bottom = previewBottom + "px";
+  socialsRenderTracklistPreview();
+}
+
+// ── Availability (show/hide section when audio is loaded) ─────────────────────
 function socialsUpdateWaveformAvailability(){
-  const audioReady = !!(socialsState.audioFile && socialsState.audioServerName);
-  const section = document.getElementById("socialsWaveformSection");
-  section.style.display = audioReady ? "block" : "none";
-  if(!audioReady){
-    // Reset waveform state when audio removed
-    document.getElementById("socialsWaveformToggle").checked = false;
-    socialsWaveformState.enabled = false;
-    document.getElementById("socialsWaveformWrap").classList.add("hidden");
-    socialsUpdateWaveformPreview();
-  }
+  const hasAudio = !!(socialsState.audioFile);
+  const sec = document.getElementById("socialsWaveformSection");
+  if(sec) sec.style.display = hasAudio ? "block" : "none";
 }
 
-// Draw the waveform preview from the audio blob (using WaveSurfer data if available)
-function socialsUpdateWaveformPreview(){
+// ── Phone-frame preview ───────────────────────────────────────────────────────
+function socialsRenderTracklistPreview(){
   const preview = document.getElementById("socialsWavePreview");
-  const on = socialsWaveformState.enabled && !!(socialsState.audioFile);
+  if(!preview) return;
+
+  const on = socialsTracklistState.enabled;
   preview.style.display = on ? "block" : "none";
-  if(!on){ _socialsStopWaveformAnimation(); socialsDrawMiniWaveform(false); return; }
+  if(!on){ _tlStopFillAnimation(); return; }
 
-  // Track height is fixed — never changes with the position slider
-  const track = document.getElementById("socialsWavePreviewTrack");
-  track.style.height = "27px";
+  const tracks    = socialsTracklistState.tracks;
+  const colKey    = socialsTracklistState.colour;
+  const baseRgb   = TL_COLOURS[colKey] || TL_COLOURS.grey;
+  const lightRgb  = tlLighten(baseRgb);
+  const playing   = socialsTracklistState.playingIdx;
 
-  // Title: position and width constrained to match waveform position in the preview
-  const titleEl = document.getElementById("socialsWavePreviewTitle");
-  if(titleEl){
-    titleEl.textContent = socialsWaveformState.title || "";
-    titleEl.style.display = socialsWaveformState.title ? "block" : "none";
-    if(socialsWaveformState.title){
-      // Compute waveform geometry in preview coords
-      const track = document.getElementById("socialsWavePreviewTrack");
-      const totalW = track ? (track.offsetWidth || 226) : 226;
-      const scale  = Math.min(1, socialsWaveformState.scale / 100);
-      const W      = Math.max(4, Math.round(totalW * scale));
-      const xOff   = Math.round((totalW - W) / 2);
-      const align  = socialsWaveformState.align;
-      // Title sits within [xOff, xOff+W], text-aligned within that box
-      titleEl.style.marginLeft = xOff + "px";
-      titleEl.style.width      = W + "px";
-      titleEl.style.textAlign  = align === "centre" ? "center" : align;
-      titleEl.style.paddingLeft  = "";
-      titleEl.style.paddingRight = "";
-    }
+  // Bar colours
+  const barBg   = document.getElementById("socialsPreviewBarBg");
+  const barFill = document.getElementById("socialsPreviewBarFill");
+  if(barBg)   barBg.style.background   = tlRgbCss(baseRgb, 0.7);
+  if(barFill) barFill.style.background = tlRgbCss(lightRgb, 0.9);
+
+  // Tracklist rows
+  const listEl = document.getElementById("socialsPreviewTracklist");
+  if(listEl){
+    listEl.innerHTML = tracks.map((t, i) => {
+      const isPlaying = i === playing;
+      const col = isPlaying ? tlRgbCss(lightRgb, 0.95) : tlRgbCss(baseRgb, 0.8);
+      const weight = isPlaying ? "600" : "400";
+      const label = t.id ? `[${t.id}]` : "[ ]";
+      return `<div class="preview-tl-row" style="color:${col};font-weight:${weight};">
+        <span>${label} ${t.name}</span>
+        <span>${t.dur||""}</span>
+      </div>`;
+    }).join("");
   }
 
-  // Draw phone-frame preview canvas
-  _socialsDrawWaveformPreviewCanvas();
-
-  // Draw mini waveform in the waveform overlay card
-  socialsDrawMiniWaveform(true);
-
-  // Start animated playhead line
-  _socialsStartWaveformAnimation();
+  // Start fill animation
+  _tlStartFillAnimation(barFill);
 }
 
-// Draw waveform into the mini preview canvas inside the waveform overlay card
-function socialsDrawMiniWaveform(animate){
-  const canvas = document.getElementById("socialsWfMiniCanvas");
-  const line   = document.getElementById("socialsWfMiniLine");
-  if(!canvas) return;
-
-  const wrap = document.getElementById("socialsWfMiniWrap");
-  const totalW = wrap ? (wrap.offsetWidth || 260) : 260;
-  const H = wrap ? (wrap.offsetHeight || 70) : 70;
-
-  const scale  = Math.min(1, socialsWaveformState.scale / 100);
-  const W      = Math.max(10, Math.round(totalW * scale));
-  const drawH  = Math.max(4, Math.round(H * scale));       // scaled bar height
-  const xOff   = Math.round((totalW - W) / 2);
-  const yOff   = Math.round((H - drawH) / 2);
-
-  canvas.width = totalW; canvas.height = H;
-  const ctx = canvas.getContext("2d");
-  ctx.clearRect(0, 0, totalW, H);
-
-  let segPeaks = null;
-  try{
-    if(socials_ws && socials_ws.exportPeaks && socials_duration > 0){
-      const all = socials_ws.exportPeaks({channels:1, maxLength:10000})[0];
-      if(all && all.length > 0){
-        const segLen   = socials_getSegLen();
-        const segStart = (() => {
-          const sec = mmssToSecs(document.getElementById("socialsSegStart")?.value || "00:00");
-          return sec === null ? 0 : sec;
-        })();
-        const i0 = Math.floor((segStart / socials_duration) * all.length);
-        const i1 = Math.ceil(((segStart + segLen) / socials_duration) * all.length);
-        segPeaks = all.slice(i0, Math.min(i1, all.length));
-      }
-    }
-  }catch(_){}
-
-  const gradient = ctx.createLinearGradient(0, yOff, 0, yOff + drawH);
-  gradient.addColorStop(0,   "rgba(255,255,255,0.25)");
-  gradient.addColorStop(0.5, "rgba(255,255,255,0.75)");
-  gradient.addColorStop(1,   "rgba(255,255,255,0.25)");
-  ctx.fillStyle = gradient;
-
-  if(segPeaks && segPeaks.length > 0){
-    const srcLen = segPeaks.length;
-    for(let x = 0; x < W; x++){
-      const i0s = Math.floor((x / W) * srcLen);
-      const i1s = Math.min(srcLen - 1, Math.ceil(((x + 1) / W) * srcLen));
-      let peak = 0;
-      for(let i = i0s; i <= i1s; i++) peak = Math.max(peak, Math.abs(segPeaks[i] || 0));
-      const barH = Math.max(1, Math.pow(peak, 0.6) * drawH * 0.88);
-      ctx.fillRect(xOff + x, yOff + (drawH - barH) / 2, 1, barH);
-    }
-  } else {
-    ctx.fillStyle = "rgba(255,255,255,0.2)";
-    for(let x = 0; x < W; x++){
-      const h = Math.max(1, drawH * 0.15 * (1 + Math.abs(Math.sin(x * 0.12))));
-      ctx.fillRect(xOff + x, yOff + (drawH - h) / 2, 1, h);
-    }
-  }
-
-  if(line){
-    if(animate){
-      line.style.display = "block";
-      _socialsAnimateMiniLine(line, W, xOff);
-    } else {
-      line.style.display = "none";
-      if(socialsWaveformState._miniRafId){ cancelAnimationFrame(socialsWaveformState._miniRafId); socialsWaveformState._miniRafId = null; }
-    }
-  }
-}
-
-function _socialsAnimateMiniLine(line, W, xOff){
-  if(socialsWaveformState._miniRafId) cancelAnimationFrame(socialsWaveformState._miniRafId);
+function _tlStartFillAnimation(barFill){
+  if(!barFill) return;
+  _tlStopFillAnimation();
   const segLen = socials_getSegLen() || 15;
-  const startTs = performance.now();
+  socialsTracklistState._startTime = null;
   const tick = (now) => {
-    if(!socialsWaveformState.enabled) return;
-    const elapsed  = (now - startTs) / 1000;
-    const progress = (elapsed % segLen) / segLen;
-    // Line travels from xOff to xOff+W-1 (stays within waveform)
-    line.style.left = Math.round(xOff + progress * (W - 1)) + "px";
-    socialsWaveformState._miniRafId = requestAnimationFrame(tick);
+    if(!socialsTracklistState.enabled){ _tlStopFillAnimation(); return; }
+    if(!socialsTracklistState._startTime) socialsTracklistState._startTime = now;
+    const elapsed  = (now - socialsTracklistState._startTime) / 1000;
+    const progress = Math.min(1, (elapsed % segLen) / segLen);
+    barFill.style.width = (progress * 100).toFixed(2) + "%";
+    socialsTracklistState._rafId = requestAnimationFrame(tick);
   };
-  socialsWaveformState._miniRafId = requestAnimationFrame(tick);
+  socialsTracklistState._rafId = requestAnimationFrame(tick);
 }
 
-function _socialsDrawWaveformPreviewCanvas(){
-  const canvas = document.getElementById("socialsWavePreviewCanvas");
-  if(!canvas) return;
-  const track = document.getElementById("socialsWavePreviewTrack");
-  const totalW = track.offsetWidth || 226;
-  const H = track.offsetHeight || 27;  // fixed container height
-
-  const scale = Math.min(1, socialsWaveformState.scale / 100);
-  const W     = Math.max(4, Math.round(totalW * scale));  // scaled width
-  const drawH = Math.max(2, Math.round(H * scale));       // scaled bar height
-  const xOff  = Math.round((totalW - W) / 2);             // centred x
-  const yOff  = Math.round((H - drawH) / 2);              // centred y
-
-  canvas.width = totalW; canvas.height = H;
-  const ctx = canvas.getContext("2d");
-  ctx.clearRect(0, 0, totalW, H);
-
-  let segPeaks = null;
-  try{
-    if(socials_ws && socials_ws.exportPeaks && socials_duration > 0){
-      const allPeaks = socials_ws.exportPeaks({channels:1, maxLength:10000})[0];
-      if(allPeaks && allPeaks.length > 0){
-        const segLen  = socials_getSegLen();
-        const segStart = (() => {
-          const sec = mmssToSecs(document.getElementById("socialsSegStart")?.value || "00:00");
-          return sec === null ? 0 : sec;
-        })();
-        const startFrac = Math.max(0, segStart / socials_duration);
-        const endFrac   = Math.min(1, (segStart + segLen) / socials_duration);
-        segPeaks = allPeaks.slice(Math.floor(startFrac * allPeaks.length), Math.ceil(endFrac * allPeaks.length));
-      }
-    }
-  }catch(_){}
-
-  ctx.fillStyle = "rgba(255,255,255,0.85)";
-  if(segPeaks && segPeaks.length > 0){
-    const srcLen = segPeaks.length;
-    for(let x = 0; x < W; x++){
-      const i0 = Math.floor((x / W) * srcLen);
-      const i1 = Math.min(srcLen - 1, Math.ceil(((x + 1) / W) * srcLen));
-      let peak = 0;
-      for(let i = i0; i <= i1; i++) peak = Math.max(peak, Math.abs(segPeaks[i] || 0));
-      const barH = Math.max(1, Math.pow(peak, 0.6) * drawH * 0.92);
-      ctx.fillRect(xOff + x, yOff + (drawH - barH) / 2, 1, barH);
-    }
-  } else {
-    ctx.fillStyle = "rgba(255,255,255,0.35)";
-    for(let x = 0; x < W; x++){
-      const h = Math.max(1, drawH * (0.15 + 0.55 * Math.abs(Math.sin(x * 0.12))));
-      ctx.fillRect(xOff + x, yOff + (drawH - h) / 2, 1, h);
-    }
+function _tlStopFillAnimation(){
+  if(socialsTracklistState._rafId){
+    cancelAnimationFrame(socialsTracklistState._rafId);
+    socialsTracklistState._rafId = null;
   }
+  socialsTracklistState._startTime = null;
 }
 
-function _socialsStartWaveformAnimation(){
-  _socialsStopWaveformAnimation();
-  const line = document.getElementById("socialsWavePreviewLine");
-  const track = document.getElementById("socialsWavePreviewTrack");
-  if(!line || !track) return;
-
-  const segLen = socials_getSegLen() || 15;
-  const totalW = track.offsetWidth || 226;
-  const H      = track.offsetHeight || 27;
-  const scale  = Math.min(1, socialsWaveformState.scale / 100);
-  const W      = Math.max(4, Math.round(totalW * scale));
-  const drawH  = Math.max(2, Math.round(H * scale));
-  const xOff   = Math.round((totalW - W) / 2);
-  const yOff   = Math.round((H - drawH) / 2);
-
-  line.style.top    = yOff + "px";
-  line.style.height = drawH + "px";
-  line.style.display = "block";
-  const animate = (now) => {
-    if(!socialsWaveformState.enabled) return;
-    if(!socialsWaveformState._startTime) socialsWaveformState._startTime = now;
-    const elapsed  = (now - socialsWaveformState._startTime) / 1000;
-    const progress = (elapsed % segLen) / segLen;
-    line.style.left = Math.round(xOff + progress * (W - 1)) + "px";
-    socialsWaveformState._rafId = requestAnimationFrame(animate);
-  };
-  socialsWaveformState._startTime = null;
-  socialsWaveformState._rafId = requestAnimationFrame(animate);
+// ── Init (called once on page load) ──────────────────────────────────────────
+function socialsInitTracklist(){
+  socialsInitTracklistColours();
+  // Start with one empty track row
+  socialsAddTrackRow("A1", "", "");
 }
 
-function _socialsStopWaveformAnimation(){
-  if(socialsWaveformState._rafId){ cancelAnimationFrame(socialsWaveformState._rafId); socialsWaveformState._rafId = null; }
-  if(socialsWaveformState._miniRafId){ cancelAnimationFrame(socialsWaveformState._miniRafId); socialsWaveformState._miniRafId = null; }
-  socialsWaveformState._startTime = null;
-  const line = document.getElementById("socialsWavePreviewLine");
-  if(line){ line.style.display = "none"; line.style.left = "0"; }
-  const mline = document.getElementById("socialsWfMiniLine");
-  if(mline){ mline.style.display = "none"; }
-}
+
 let socials_ws=null, socials_regions=null, socials_region=null, socials_duration=0, socials_playing=false, socials_playTimer=null, socials_startInputDirty=false;
 
 async function onSocialsImageSelected(){
@@ -1753,11 +1670,31 @@ function socialsSetupPills(groupId, onChange){
 // Initialise socials controls on page load
 window.addEventListener("load", () => {
   socialsInitOverlays();
-  socialsInitWaveformAlignPills();
+  socialsInitTracklist();
 
   socialsSetupPills("socialsBgTreatment", v => {
     socialsState.bgTreatment = v;
-    applySocialsOverlayPreview();
+    const isSolid = v === "solid";
+    document.getElementById("socialsSolidColourWrap").classList.toggle("hidden", !isSolid);
+    if(isSolid){
+      applySolidColourBg();
+    } else {
+      // Remove solid colour override from bg layer
+      const bg = document.getElementById("socialsBgLayer");
+      if(bg){ bg.style.background = ""; bg.style.backgroundImage = socialsState.imageDataUrl ? `url(${socialsState.imageDataUrl})` : ""; }
+      applySocialsOverlayPreview();
+    }
+  });
+
+  // Solid colour swatch pills
+  document.querySelectorAll("#socialsSolidSwatches .pill").forEach(p => {
+    p.addEventListener("click", () => {
+      document.querySelectorAll("#socialsSolidSwatches .pill").forEach(x => x.classList.remove("active"));
+      p.classList.add("active");
+      socialsState.solidColour = p.dataset.colour;
+      document.getElementById("socialsSolidCustom").value = socialsState.solidColour;
+      applySolidColourBg();
+    });
   });
 
   socialsSetupPills("socialsAnimType", v => {
@@ -1826,6 +1763,25 @@ window.addEventListener("load", () => {
   });
 });
 
+function onSolidColourCustom(val){
+  socialsState.solidColour = val;
+  document.querySelectorAll("#socialsSolidSwatches .pill").forEach(p => p.classList.remove("active"));
+  applySolidColourBg();
+}
+
+function applySolidColourBg(){
+  const bg = document.getElementById("socialsBgLayer");
+  if(!bg) return;
+  bg.style.backgroundImage = "";
+  bg.style.background = socialsState.solidColour;
+  // Ensure bg fills the frame
+  bg.style.width = SOCIALS_FRAME_W + "px";
+  bg.style.height = SOCIALS_FRAME_H + "px";
+  bg.style.transform = "translate(-50%, -50%)";
+  // Re-apply glitch/overlays if needed (they sit on top)
+  applySocialsOverlayPreview();
+}
+
 async function startSocialsRender(){
   if(!socialsState.imageUploaded){ showError("Please upload an image first."); return; }
   document.getElementById("renderStatus").className = "status-line";
@@ -1852,7 +1808,8 @@ async function startSocialsRender(){
 
     const payload = {
       session_id: SESSION_ID,
-      bg_treatment: socialsState.bgTreatment,
+      bg_treatment: socialsState.bgTreatment === "solid" ? "normal" : socialsState.bgTreatment,
+      solid_colour: socialsState.bgTreatment === "solid" ? socialsState.solidColour : null,
       animation: resolvedAnim,
       strobe_opacity: socialsState.strobeOpacity,
       strobe_zoom: socialsState.strobeZoom,
@@ -1865,12 +1822,14 @@ async function startSocialsRender(){
       segment_start_sec: segStart,
       segment_length_sec: segLen,
       overlays: socialsOverlaysToPayload(),
-      use_waveform: socialsWaveformState.enabled && useAudio,
-      waveform_title: socialsWaveformState.title,
-      waveform_height: socialsWaveformState.height,
-      waveform_scale: socialsWaveformState.scale,
-      waveform_font_size: socialsWaveformState.fontSize,
-      waveform_align: socialsWaveformState.align,
+      use_tracklist:   socialsTracklistState.enabled && useAudio,
+      tl_colour:       socialsTracklistState.colour,
+      tl_bottom:       socialsTracklistState.bottom,
+      tl_font_size:    29,
+      tl_bar_h:        18,
+      tl_line_h:       36,
+      tl_tracks:       socialsTracklistState.tracks,
+      tl_playing_idx:  socialsTracklistState.playingIdx,
     };
 
     const r = await fetch("/render_socials", {
@@ -1974,10 +1933,10 @@ function socials_initWave(){
       socials_region.setOptions({start:s, end:s+sl2});
       if(!socials_startInputDirty) document.getElementById("socialsSegStart").value = secsToMMSS(s);
       // Restart waveform preview animation with new segment position
-      if(socialsWaveformState.enabled) socialsUpdateWaveformPreview();
+      if(socialsTracklistState.enabled) socialsRenderTracklistPreview();
     });
     // Redraw preview canvas now that we have real peaks
-    if(socialsWaveformState.enabled) socialsUpdateWaveformPreview();
+    if(socialsTracklistState.enabled) socialsRenderTracklistPreview();
   });
   socials_ws.on("error", () => { document.getElementById("socialsWaveInfo").textContent = "Waveform unavailable"; });
   socials_ws.load(socialsState.audioBlobUrl);
@@ -1988,7 +1947,7 @@ function socials_onSegLenChanged(){
   const sl = socials_getSegLen(), s = clampStart(socials_region.start, sl, socials_duration);
   socials_region.setOptions({start:s, end:s+sl});
   if(!socials_startInputDirty) document.getElementById("socialsSegStart").value = secsToMMSS(s);
-  if(socialsWaveformState.enabled) socialsUpdateWaveformPreview();
+  if(socialsTracklistState.enabled) socialsRenderTracklistPreview();
 }
 
 function socials_onStartInput(){ socials_startInputDirty = true; }
@@ -2001,7 +1960,7 @@ function socials_onStartBlur(){
   const sl = socials_getSegLen(), s = clampStart(sec, sl, socials_duration);
   socials_region.setOptions({start:s, end:s+sl});
   document.getElementById("socialsSegStart").value = secsToMMSS(s);
-  if(socialsWaveformState.enabled) socialsUpdateWaveformPreview();
+  if(socialsTracklistState.enabled) socialsRenderTracklistPreview();
 }
 
 function socials_playPause(){
