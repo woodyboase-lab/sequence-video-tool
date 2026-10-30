@@ -937,9 +937,10 @@ async function pollProgress(jobId){
         const s=document.getElementById("renderStatus");
         s.className="status-line ok";s.textContent="\u2713 "+(job.message||"Done.");
         const list=document.getElementById("downloadList");list.innerHTML="";
-        (job.videos||[]).filter(v=>v.status==="done"&&v.url).forEach(v=>{
+        (job.videos||[]).filter(v=>v.url).forEach(v=>{
+          const displayName = v.label || v.name || "Download";
           const item=document.createElement("div");item.className="download-item";
-          item.innerHTML='<span class="dl-name">'+v.name+'</span><a class="btn btn-download btn-sm" href="'+v.url+'" download="'+v.name+'">\u2193 Download</a>';
+          item.innerHTML='<span class="dl-name">'+displayName+'</span><a class="btn btn-download btn-sm" href="'+v.url+'" download="'+displayName+'">\u2193 Download</a>';
           list.appendChild(item);
         });
         if(job.zip_url){
@@ -1211,7 +1212,7 @@ const TL_COLOURS = {
   orange: [210,  90,  20],
   purple: [130,  60, 180],
 };
-function tlLighten([r,g,b], f=2.8){ return [Math.min(255,r*f|0), Math.min(255,g*f|0), Math.min(255,b*f|0)]; }
+function tlLighten([r,g,b], alpha=0.55){ return [Math.min(255,(r+(255-r)*alpha)|0), Math.min(255,(g+(255-g)*alpha)|0), Math.min(255,(b+(255-b)*alpha)|0)]; }
 function tlRgbCss([r,g,b], a=1){ return `rgba(${r},${g},${b},${a})`; }
 
 let socialsTracklistState = {
@@ -1793,43 +1794,43 @@ async function startSocialsRender(){
 
   try{
     const useAudio = !!socialsState.audioFile && !!socialsState.audioServerName;
-    let segStart = 0, segLen = 0;
+    let segStart = 0, segLen = 8;
     if(useAudio){
       const sec = mmssToSecs(document.getElementById("socialsSegStart").value || "00:00");
       segStart = sec === null ? 0 : sec;
-      segLen = socials_getSegLen();
+      segLen   = socials_getSegLen();
+    } else {
+      segLen = parseFloat(document.getElementById("socialsDuration")?.value) || socialsState.duration || 8;
     }
 
-    // Backend expects animation values: none|strobe|horizontal|diagonal|diamond.
-    // The UI groups the three pans under one "pan" pill + a path-shape selector, so resolve here.
     const resolvedAnim = (socialsState.animation === "pan")
       ? (socialsState.panShape || "horizontal")
       : socialsState.animation;
 
     const payload = {
-      session_id: SESSION_ID,
-      bg_treatment: socialsState.bgTreatment === "solid" ? "normal" : socialsState.bgTreatment,
-      solid_colour: socialsState.bgTreatment === "solid" ? socialsState.solidColour : null,
-      animation: resolvedAnim,
-      strobe_opacity: socialsState.strobeOpacity,
-      strobe_zoom: socialsState.strobeZoom,
-      strobe_offset_x: socialsState.strobeOffsetX,
-      strobe_offset_y: socialsState.strobeOffsetY,
-      pan_duration: socialsState.panDuration,
-      duration: socialsState.duration,
-      output_format: socialsState.outputFormat,
-      use_audio: useAudio,
-      segment_start_sec: segStart,
+      session_id:         SESSION_ID,
+      bg_treatment:       socialsState.bgTreatment === "solid" ? "normal" : socialsState.bgTreatment,
+      solid_colour:       socialsState.bgTreatment === "solid" ? socialsState.solidColour : null,
+      animation:          resolvedAnim,
+      strobe_opacity:     socialsState.strobeOpacity,
+      strobe_zoom:        socialsState.strobeZoom,
+      strobe_offset_x:    socialsState.strobeOffsetX,
+      strobe_offset_y:    socialsState.strobeOffsetY,
+      pan_duration:       socialsState.panDuration,
+      duration:           socialsState.duration,
+      output_format:      socialsState.outputFormat,
+      use_audio:          useAudio,
+      segment_start_sec:  segStart,
       segment_length_sec: segLen,
-      overlays: socialsOverlaysToPayload(),
-      use_tracklist:   socialsTracklistState.enabled && useAudio,
-      tl_colour:       socialsTracklistState.colour,
-      tl_bottom:       socialsTracklistState.bottom,
-      tl_font_size:    29,
-      tl_bar_h:        18,
-      tl_line_h:       36,
-      tl_tracks:       socialsTracklistState.tracks,
-      tl_playing_idx:  socialsTracklistState.playingIdx,
+      overlays:           socialsOverlaysToPayload(),
+      use_tracklist:      socialsTracklistState.enabled && useAudio,
+      tl_colour:          socialsTracklistState.colour,
+      tl_bottom:          socialsTracklistState.bottom,
+      tl_font_size:       29,
+      tl_bar_h:           18,
+      tl_line_h:          36,
+      tl_tracks:          socialsTracklistState.tracks,
+      tl_playing_idx:     socialsTracklistState.playingIdx,
     };
 
     const r = await fetch("/render_socials", {
@@ -1849,6 +1850,7 @@ async function startSocialsRender(){
     setRunning(false);
   }
 }
+
 
 function onSocialsAudioToggle(){
   const on = document.getElementById("socialsAudioToggle").checked;

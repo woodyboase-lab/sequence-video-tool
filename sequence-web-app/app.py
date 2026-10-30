@@ -20,6 +20,25 @@ APP_NAME = "Sequence Video & Audio Tool"
 # ------------------------------------------------------------
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATES_DIR = BASE_DIR / "templates"
+SHADOW_PNG = BASE_DIR / "shadow.png"
+
+def _ensure_shadow_png():
+    """Generate the shadow PNG once at startup if it doesn't exist."""
+    if SHADOW_PNG.exists():
+        return
+    try:
+        from PIL import Image, ImageFilter, ImageDraw
+        FW, FH = 1080, 1920
+        fg_x, fg_y, fg_w = 173, 593, 734
+        img = Image.new("RGBA", (FW, FH), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(img)
+        draw.rectangle([fg_x, fg_y, fg_x + fg_w, fg_y + fg_w], fill=(0, 0, 0, 255))
+        img = img.filter(ImageFilter.GaussianBlur(radius=40))
+        img.save(str(SHADOW_PNG))
+    except Exception as e:
+        print(f"[WARN] Could not generate shadow.png: {e}")
+
+_ensure_shadow_png()
 UPLOAD_DIR = Path(tempfile.gettempdir()) / "sequence_uploads"
 RENDER_DIR = Path(tempfile.gettempdir()) / "sequence_renders"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -670,7 +689,7 @@ SOCIALS_IMAGE_EXTS = {".jpg", ".jpeg", ".png"}
 SOCIALS_W, SOCIALS_H = 1080, 1920
 SOCIALS_FG_W = int(SOCIALS_W * 0.68)  # 734
 SOCIALS_FG_W -= SOCIALS_FG_W % 2
-SOCIALS_PAD = 40  # shadow padding around the square
+SOCIALS_PAD = 80  # shadow padding around the square (needs to be > blur sigma)
 SOCIALS_BG_OVERSIZE = 1.4  # for pan animations: 1.4x of frame -> 2688 wide
 SOCIALS_BG_PAN_W = int(SOCIALS_W * SOCIALS_BG_OVERSIZE)
 SOCIALS_BG_PAN_W -= SOCIALS_BG_PAN_W % 2  # 1512
@@ -855,7 +874,7 @@ def _socials_build_filter(
     is_zoom_pan = animation in ("ken_burns", "zoom_pulse")
     is_colour = (animation == "colour_shift")
 
-    fps = 30
+    fps = 60
     frames = max(1, int(round(duration * fps)))
 
     if is_pan:
@@ -873,37 +892,33 @@ def _socials_build_filter(
         if bg_treatment == "inverted": treatment = ",negate"
         elif bg_treatment == "bw":     treatment = ",hue=s=0"
 
-        over   = bg_w * 2
-        over_h = bg_h * 2
-
+        # True centred zoom using zoompan filter.
+        # zoompan uses 'on' (output frame count) which increments reliably
+        # even with looped still images — unlike t/n in scale/crop.
+        # x='iw/2-(iw/zoom/2)' and y='ih/2-(ih/zoom/2)' keep zoom centred.
         if animation == "ken_burns":
-            # Zoom oscillates 1.15 ↔ 1.40 + diagonal pan
-            z_min, z_max = 1.15, 1.40
-            pan_x = int(bg_w * 0.10)
-            pan_y = int(bg_h * 0.04)
+            z_min, z_max = 1.0, 1.35
+            # ken_burns adds a gentle diagonal pan on top of the zoom
+            pan_x_expr = f"+0.08*iw*sin(2*PI*on/{int(fps*pan_dur)})"
+            pan_y_expr = f"+0.03*ih*sin(2*PI*on/{int(fps*pan_dur)}+1.047)"
         else:  # zoom_pulse — pure breathing zoom, no pan
-            z_min, z_max = 1.10, 1.35
-            pan_x = pan_y = 0
+            z_min, z_max = 1.0, 1.30
+            pan_x_expr = ""
+            pan_y_expr = ""
 
         z_mid = (z_max + z_min) / 2
         z_amp = (z_max - z_min) / 2
-        z_expr = f"{z_mid:.3f}+{z_amp:.3f}*cos(2*PI*t/{pan_dur:.3f})"
-        w_out  = f"2*ceil({bg_w}*({z_expr})/2)"
-        h_out  = f"2*ceil({bg_h}*({z_expr})/2)"
-
-        # overlay centres the zoomed layer then adds pan offset
-        ov_x = "(main_w-overlay_w)/2"
-        ov_y = "(main_h-overlay_h)/2"
-        if pan_x:
-            ov_x += f"+{pan_x}*sin(2*PI*t/{pan_dur:.3f})"
-            ov_y += f"+{pan_y}*sin(2*PI*t/{pan_dur:.3f}+PI/3)"
+        n_cycle = int(fps * pan_dur)
+        z_expr = f"{z_mid:.4f}+{z_amp:.4f}*cos(2*PI*on/{n_cycle})"
 
         bg_chain = (
-            f"color=c=black:s={bg_w}x{bg_h}:d={duration:.3f}[_zbase];"
-            f"[0:v]scale={over}:{over_h}:force_original_aspect_ratio=increase,"
-            f"crop={over}:{over_h}{treatment},"
-            f"scale=w='{w_out}':h='{h_out}':eval=frame:flags=bicubic[_zoom];"
-            f"[_zbase][_zoom]overlay=x='{ov_x}':y='{ov_y}'"
+            f"[0:v]scale={int(bg_w*z_max*2)}:{int(bg_h*z_max*2)}:"
+            f"force_original_aspect_ratio=increase,"
+            f"crop={int(bg_w*z_max*2)}:{int(bg_h*z_max*2)}{treatment},"
+            f"zoompan=z='{z_expr}'"
+            f":x='iw/2-(iw/zoom/2){pan_x_expr}'"
+            f":y='ih/2-(ih/zoom/2){pan_y_expr}'"
+            f":d=1:s={bg_w}x{bg_h}:fps={fps}"
         )
 
     elif is_colour:
@@ -969,11 +984,10 @@ def _socials_build_filter(
     # 2) Foreground square (centred, fg_w x fg_w)
     fg_chain = f"[0:v]scale={fg_w}:{fg_w}:force_original_aspect_ratio=increase,crop={fg_w}:{fg_w}[fg]"
 
-    # 3) Shadow: black square the same size as fg, padded by `pad` on each side, gblur
+    # 3) Shadow: full-frame 1080x1920 transparent PNG with pre-baked Gaussian blur.
+    #    Passed in as input [1:v]; scale to exact frame size and overlay at 0,0.
     shadow_chain = (
-        f"color=c=black@0.55:s={fg_w}x{fg_w}:d={duration:.3f},"
-        f"pad={shadow_outer}:{shadow_outer}:{pad}:{pad}:color=black@0.0,"
-        f"gblur=sigma=20[shadow]"
+        f"[1:v]scale={bg_w}:{bg_h}:flags=lanczos[shadow]"
     )
 
     # 4) Pan: crop the oversized bg with a moving window
@@ -1037,16 +1051,16 @@ def _socials_build_filter(
         )
         ov_chain = _socials_overlay_chain(ovl, "bgstrobed", "bgo", duration)
         compose = (
-            f"[bgo][shadow]overlay={sx}:{sy}:format=auto[bgs2];"
-            f"[bgs2][fg]overlay={fx}:{fy}:format=auto[outv]"
+            f"[bgo][shadow]overlay=0:0:format=auto[bgs2];"
+            f"[bgs2][fg]overlay={fx}:{fy}:format=yuv420[outv]"
         )
         return f"{bg_chain};{fg_chain};{shadow_chain};{strobe};{ov_chain};{compose}"
 
     # No strobe (or solid colour): bg → overlays → shadow → fg
     ov_chain = _socials_overlay_chain(ovl, "bg", "bgo", duration)
     compose = (
-        f"[bgo][shadow]overlay={sx}:{sy}:format=auto[bgs];"
-        f"[bgs][fg]overlay={fx}:{fy}:format=auto[outv]"
+        f"[bgo][shadow]overlay=0:0:format=auto[bgs];"
+        f"[bgs][fg]overlay={fx}:{fy}:format=yuv420[outv]"
     )
     return f"{bg_chain};{fg_chain};{shadow_chain};{ov_chain};{compose}"
 
@@ -1146,32 +1160,29 @@ def _socials_append_tracklist(
     light_rgb: Tuple[int, int, int],
 ) -> str:
     """
-    Overlay the static tracklist PNG (dark bar + text) then animate a growing
-    light-fill bar using scale with eval=frame so width updates per-frame.
+    Overlay static tracklist PNG (dark bar + text) then animate a growing
+    light-fill bar using geq — tested working on ffmpeg 8.
     """
     FW, FH = SOCIALS_W, SOCIALS_H
     PAD   = int(FW * 0.15)
-    cw    = FW - 2 * PAD      # 756px
+    cw    = FW - 2 * PAD
     bar_y = FH - bottom_offset
     seg_s = max(0.001, float(seg_len))
     r, g, b = light_rgb
 
-    # scale filter supports eval=frame and can reference `t` via the `out_t` variable.
-    # We use a 1x1 colour source scaled up to growing width each frame.
-    # out_w expression: min(cw, cw*t/seg_s), must be even, min 2px
-    scale_w = f"max(2\\,min({cw}\\,trunc({cw}*t/{seg_s:.6f})))"
+    geq = (
+        f"geq="
+        f"r='if(lt(X\\,{cw}*T/{seg_s:.6f}),{r},0)':"
+        f"g='if(lt(X\\,{cw}*T/{seg_s:.6f}),{g},0)':"
+        f"b='if(lt(X\\,{cw}*T/{seg_s:.6f}),{b},0)':"
+        f"a='if(lt(X\\,{cw}*T/{seg_s:.6f}),230,0)'"
+    )
 
     parts = [base_fc]
     parts.append(f"[{in_label}][{tl_input_idx}:v]overlay=0:0[tl1]")
-    parts.append(
-        f"color=c=#{r:02x}{g:02x}{b:02x}:s=2x{bar_h}:d={seg_s:.3f}[fillsrc]"
-    )
-    parts.append(
-        f"[fillsrc]scale=w='{scale_w}':h={bar_h}:eval=frame[fillscaled]"
-    )
-    parts.append(
-        f"[tl1][fillscaled]overlay=x={PAD}:y={bar_y}:format=auto[{out_label}]"
-    )
+    parts.append(f"color=c=black@0.0:s={cw}x{bar_h}:d={seg_s:.3f}:r=60[fillsrc]")
+    parts.append(f"[fillsrc]{geq}[fillbar]")
+    parts.append(f"[tl1][fillbar]overlay=x={PAD}:y={bar_y}:format=auto[{out_label}]")
     return ";".join(parts)
 
 
@@ -1307,17 +1318,22 @@ def _run_socials_render_job(job_id: str, data: dict) -> None:
             v_idx = len(job["videos"]) - 1
 
             # Build inputs: [0]=image, [1]=audio (optional), [N]=tracklist PNG
-            cmd: List[str] = [FFMPEG, "-y", "-loop", "1", "-i", str(image_path)]
+            # [0]=image, [1]=shadow PNG (always), [2]=audio (opt), [3]=tracklist (opt)
+            cmd: List[str] = [
+                FFMPEG, "-y",
+                "-r", "60", "-loop", "1", "-i", str(image_path),
+                "-loop", "1", "-i", str(SHADOW_PNG),
+            ]
             audio_input_idx = None
             tl_input_idx    = None
 
             if use_audio and audio_path is not None:
                 cmd += ["-ss", f"{seg_start}", "-t", f"{seg_len}", "-i", str(audio_path)]
-                audio_input_idx = 1
+                audio_input_idx = 2
 
             if tl_img_path is not None and tl_img_path.exists():
                 cmd += ["-loop", "1", "-i", str(tl_img_path)]
-                tl_input_idx = 2 if audio_input_idx == 1 else 1
+                tl_input_idx = 3 if audio_input_idx == 2 else 2
 
             # Extend filter graph with tracklist overlay if needed
             if tl_input_idx is not None:
@@ -1339,8 +1355,9 @@ def _run_socials_render_job(job_id: str, data: dict) -> None:
                     cmd += ["-map", f"{audio_input_idx}:a:0", "-c:a", "aac", "-b:a", "320k"]
                 cmd += [
                     "-t", f"{duration}",
-                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
-                    "-r", "30", "-pix_fmt", "yuv420p",
+                    "-c:v", "libx264", "-preset", "slow", "-crf", "16",
+                    "-tune", "film",
+                    "-r", "60", "-pix_fmt", "yuv420p",
                     "-movflags", "+faststart",
                     str(out_path),
                 ]
@@ -1391,6 +1408,104 @@ def render_socials():
         "videos": [], "message": "", "error": "", "zip_url": None,
     })
     threading.Thread(target=_run_socials_render_job, args=(job_id, data), daemon=True).start()
+    return jsonify({"ok": True, "job_id": job_id})
+
+
+@app.route("/upload_canvas_video", methods=["POST"])
+def upload_canvas_video():
+    """Receives the WebM blob from the browser canvas capture and saves it."""
+    session_id = request.form.get("session_id", "")
+    if not session_id:
+        return Response("Missing session_id", status=400)
+    sess_dir = get_session_dir(session_id) / "socials"
+    sess_dir.mkdir(parents=True, exist_ok=True)
+    f = request.files.get("video")
+    if not f:
+        return Response("Missing video", status=400)
+    fname = f"canvas_{uuid.uuid4().hex[:8]}.webm"
+    save_path = sess_dir / fname
+    f.save(str(save_path))
+    return jsonify({"ok": True, "filename": fname})
+
+
+@app.route("/render_socials_from_canvas", methods=["POST"])
+def render_socials_from_canvas():
+    """
+    Receives a WebM blob captured from the browser canvas (pixel-perfect preview),
+    optionally muxes audio, and converts to MP4.
+    Form fields: session_id, job_id, use_audio, segment_start_sec, segment_length_sec,
+                 output_format (mp4/mov/webm), video (the WebM blob file)
+    """
+    STOP_EVENT.clear()
+    session_id   = request.form.get("session_id", "")
+    job_id       = request.form.get("job_id") or str(uuid.uuid4())
+    use_audio    = request.form.get("use_audio", "false").lower() == "true"
+    seg_start    = float(request.form.get("segment_start_sec", 0) or 0)
+    seg_len      = float(request.form.get("segment_length_sec", 8) or 8)
+    output_fmt   = (request.form.get("output_format") or "mp4").lower().strip(".")
+    audio_name   = request.form.get("audio_server_name", "")
+    canvas_name  = request.form.get("canvas_video_name", "")  # pre-uploaded filename
+
+    _write_job(job_id, {
+        "status": "running", "total": 1, "done": 0,
+        "videos": [], "message": "Processing canvas capture...", "error": "", "zip_url": None,
+    })
+
+    def _run():
+        job = _read_job(job_id)
+        try:
+            sess_dir   = get_session_dir(session_id)
+            render_dir = RENDER_DIR / session_id / "SOCIALS"
+            render_dir.mkdir(parents=True, exist_ok=True)
+
+            # The canvas WebM was pre-uploaded to sess_dir/socials/canvas_<name>.webm
+            webm_path = sess_dir / "socials" / canvas_name
+            if not webm_path.exists():
+                raise FileNotFoundError(f"Canvas video not found: {webm_path}")
+
+            out_name = f"socials_export.{output_fmt}"
+            out_path = render_dir / out_name
+
+            if use_audio and audio_name:
+                audio_path = sess_dir / "socials" / audio_name
+                if not audio_path.exists():
+                    raise FileNotFoundError(f"Audio not found: {audio_path}")
+                cmd = [
+                    FFMPEG, "-y",
+                    "-i", str(webm_path),
+                    "-ss", str(seg_start), "-t", str(seg_len),
+                    "-i", str(audio_path),
+                    "-c:v", "libx264", "-preset", "fast", "-crf", "16",
+                    "-c:a", "aac", "-b:a", "192k",
+                    "-movflags", "+faststart",
+                    "-shortest",
+                    str(out_path),
+                ]
+            else:
+                cmd = [
+                    FFMPEG, "-y",
+                    "-i", str(webm_path),
+                    "-c:v", "libx264", "-preset", "fast", "-crf", "16",
+                    "-movflags", "+faststart",
+                    str(out_path),
+                ]
+
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                raise RuntimeError(f"ffmpeg error:\n{result.stderr[-1500:]}")
+
+            dl_url = f"/download/{session_id}/SOCIALS/{out_name}"
+            job.update({
+                "status": "done", "done": 1, "total": 1,
+                "videos": [{"label": out_name, "url": dl_url}],
+                "message": "Done",
+            })
+        except Exception as exc:
+            job.update({"status": "error", "error": str(exc), "message": "Error"})
+        finally:
+            _write_job(job_id, job)
+
+    threading.Thread(target=_run, daemon=True).start()
     return jsonify({"ok": True, "job_id": job_id})
 
 
