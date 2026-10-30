@@ -1186,6 +1186,241 @@ def _socials_append_tracklist(
     return ";".join(parts)
 
 
+
+# ── Release story text (artist / track above cover, [label] below) ───────────
+_STORY_REG_FONTS = [
+    ("/System/Library/Fonts/Helvetica.ttc", 0),
+    ("/System/Library/Fonts/Supplemental/Arial.ttf", 0),
+    ("/Library/Fonts/Arial.ttf", 0),
+    ("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf", 0),
+    ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 0),
+]
+_STORY_BOLD_FONTS = [
+    ("/System/Library/Fonts/Helvetica.ttc", 1),
+    ("/System/Library/Fonts/Supplemental/Arial Bold.ttf", 0),
+    ("/Library/Fonts/Arial Bold.ttf", 0),
+    ("/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf", 0),
+    ("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 0),
+]
+
+
+FONTS_DIR = BASE_DIR / "fonts"
+
+
+def _story_custom_font_path() -> Optional[Path]:
+    """Universal Sans 850 if it has been dropped into ./fonts (prefers a file with '850' in its name)."""
+    if not FONTS_DIR.is_dir():
+        return None
+    files = [f for f in sorted(FONTS_DIR.iterdir())
+             if f.is_file() and f.suffix.lower() in (".otf", ".ttf", ".ttc")]
+    for f in files:
+        if "850" in f.name:
+            return f
+    for f in files:
+        if "universal" in f.name.lower():
+            return f
+    return None
+
+
+@app.route("/story_font")
+def story_font():
+    fp = _story_custom_font_path()
+    if not fp:
+        return Response("No story font installed", status=404)
+    mt = "font/otf" if fp.suffix.lower() == ".otf" else "font/ttf"
+    return send_file(str(fp), mimetype=mt, max_age=3600)
+
+
+def _story_load_font(size: int, bold: bool = False, use_custom: bool = True):
+    from PIL import ImageFont
+    custom = _story_custom_font_path() if use_custom else None
+    if custom is not None:
+        try:
+            return ImageFont.truetype(str(custom), size)
+        except Exception as e:
+            print(f"Story font load error ({custom.name}): {e}", flush=True)
+    for path, idx in (_STORY_BOLD_FONTS if bold else _STORY_REG_FONTS):
+        try:
+            return ImageFont.truetype(path, size, index=idx)
+        except Exception:
+            pass
+    try:
+        return ImageFont.load_default(size=size)  # scalable fallback (Pillow >= 10.1)
+    except Exception:
+        return ImageFont.load_default()
+
+
+def _flen(font, text: str) -> float:
+    try:
+        return float(font.getlength(text))
+    except Exception:
+        from PIL import ImageDraw
+        return float(ImageDraw.Draw(Image.new("RGBA", (4, 4))).textlength(text, font=font))
+
+
+class _StoryFont:
+    """
+    A main font plus an optional fallback. Characters the main font doesn't contain
+    (a trial/cut-down cut of Universal Sans has no [ ] accents / +) are drawn with the
+    fallback instead of disappearing.
+    """
+    def __init__(self, main, fallback=None):
+        self.main, self.fb = main, fallback
+        self._missing: Dict[str, bool] = {}
+        self._notdef = None
+
+    def _is_missing(self, ch: str) -> bool:
+        if self.fb is None or ch.isspace():
+            return False
+        if ch in self._missing:
+            return self._missing[ch]
+        try:
+            m = self.main.getmask(ch)
+            if self._notdef is None:
+                self._notdef = self.main.getmask("\U0010FFFD")  # an unassigned code point -> .notdef
+            miss = (m.getbbox() is None) or (m.size == self._notdef.size and m.tobytes() == self._notdef.tobytes())
+        except Exception:
+            miss = False
+        self._missing[ch] = miss
+        return miss
+
+    def runs(self, text: str):
+        out: List[list] = []
+        for ch in text:
+            f = self.fb if self._is_missing(ch) else self.main
+            if out and out[-1][1] is f:
+                out[-1][0] += ch
+            else:
+                out.append([ch, f])
+        return out
+
+    def width(self, text: str) -> float:
+        return sum(_flen(f, sub) for sub, f in self.runs(text))
+
+    def ascent(self) -> int:
+        try:
+            return int(self.main.getmetrics()[0])
+        except Exception:
+            return int(getattr(self.main, "size", 40) * 0.9)
+
+    def line_h(self) -> int:
+        try:
+            a, d = self.main.getmetrics()
+            return int(a + d)
+        except Exception:
+            return int(getattr(self.main, "size", 40) * 1.2)
+
+    def draw(self, draw, x: float, y: float, text: str, fill, centre: bool = False) -> None:
+        x0 = x - self.width(text) / 2 if centre else x
+        base = y + self.ascent()
+        for sub, f in self.runs(text):
+            draw.text((x0, base), sub, font=f, fill=fill, anchor="ls")
+            x0 += _flen(f, sub)
+
+
+def _story_font(size: int, bold: bool = False) -> "_StoryFont":
+    main = _story_load_font(size, bold)
+    fb = _story_load_font(size, bold, use_custom=False) if _story_custom_font_path() else None
+    return _StoryFont(main, fb)
+
+
+def _story_fit(text: str, bold: bool, start: int, min_size: int, max_w: int):
+    """Shrink the font until `text` fits max_w; ellipsis only as a last resort."""
+    size = start
+    while size >= min_size:
+        f = _story_font(size, bold)
+        if f.width(text) <= max_w:
+            return f, text
+        size -= 2
+    f = _story_font(min_size, bold)
+    t = text
+    while len(t) > 1 and f.width(t + "…") > max_w:
+        t = t[:-1]
+    return f, t.rstrip() + "…"
+
+
+GUIDE_W, GUIDE_H = 600, 120   # link-sticker sized box, centred
+
+
+def _story_dashed_rect(draw, box, fill, width: int = 3, dash: int = 18, gap: int = 12) -> None:
+    x0, y0, x1, y1 = box
+    def hline(y, xa, xb):
+        x = xa
+        while x < xb:
+            draw.line([(x, y), (min(x + dash, xb), y)], fill=fill, width=width)
+            x += dash + gap
+    def vline(x, ya, yb):
+        y = ya
+        while y < yb:
+            draw.line([(x, y), (x, min(y + dash, yb))], fill=fill, width=width)
+            y += dash + gap
+    hline(y0, x0, x1); hline(y1, x0, x1); vline(x0, y0, y1); vline(x1, y0, y1)
+
+
+def render_story_png(
+    out_path: Path,
+    artist: str,
+    track: str,
+    label: str,
+    align: str = "left",
+    colour: str = "white",
+    guide: bool = False,
+    guide_bottom: int = 330,
+) -> Path:
+    """
+    Transparent 1080x1920 overlay: artist + track above the cover, "[label]" in
+    smaller text below it, fitted to the cover width. Optional dashed link guide.
+    """
+    from PIL import Image, ImageDraw, ImageFilter
+    FW, FH = SOCIALS_W, SOCIALS_H
+    cw = SOCIALS_FG_W
+    cx0 = (FW - cw) // 2           # cover left edge
+    cy0 = (FH - cw) // 2           # cover top edge
+    cy1 = cy0 + cw                 # cover bottom edge
+    gap_above, gap_below, line_gap = 44, 40, 12
+
+    centre = (align == "center")
+    ink = (15, 15, 15, 255) if colour == "black" else (245, 245, 245, 255)
+    halo = (255, 255, 255, 110) if colour == "black" else (0, 0, 0, 170)
+    ax = (FW // 2) if centre else cx0
+
+    top_lines = []
+    if artist:
+        top_lines.append(_story_fit(artist, True, 58, 30, cw))
+    if track:
+        top_lines.append(_story_fit(track, False, 58, 30, cw))
+
+    label_clean = label.strip().strip("[]").strip()
+    bottom_line = _story_fit(f"[{label_clean}]", False, 32, 20, cw) if label_clean else None
+
+    ops = []  # (x, y, text, font)
+    if top_lines:
+        total = sum(f.line_h() for f, _ in top_lines) + line_gap * (len(top_lines) - 1)
+        y = cy0 - gap_above - total
+        for f, t in top_lines:
+            ops.append((ax, y, t, f))
+            y += f.line_h() + line_gap
+    if bottom_line:
+        f, t = bottom_line
+        ops.append((ax, cy1 + gap_below, t, f))
+
+    shadow_layer = Image.new("RGBA", (FW, FH), (0, 0, 0, 0))
+    text_layer = Image.new("RGBA", (FW, FH), (0, 0, 0, 0))
+    sd, td = ImageDraw.Draw(shadow_layer), ImageDraw.Draw(text_layer)
+    for x, y, t, f in ops:
+        f.draw(sd, x, y, t, halo, centre)
+        f.draw(td, x, y, t, ink, centre)
+
+    if guide:
+        gy1 = FH - int(guide_bottom)
+        _story_dashed_rect(td, ((FW - GUIDE_W) // 2, gy1 - GUIDE_H, (FW + GUIDE_W) // 2, gy1),
+                           (ink[0], ink[1], ink[2], 220))
+
+    shadow_layer = shadow_layer.filter(ImageFilter.GaussianBlur(7))
+    Image.alpha_composite(shadow_layer, text_layer).save(out_path)
+    return out_path
+
+
 def _run_socials_render_job(job_id: str, data: dict) -> None:
     job = _read_job(job_id)
     session_id = data.get("session_id", "")
@@ -1247,6 +1482,21 @@ def _run_socials_render_job(job_id: str, data: dict) -> None:
         tl_playing_idx = max(0, min(len(tl_tracks)-1 if tl_tracks else 0,
                                     int(_safe_float(data.get("tl_playing_idx"), 0))))
 
+        # Release story text (artist / track above cover, [label] below)
+        story_artist = str(data.get("story_artist") or "").strip()[:80]
+        story_track  = str(data.get("story_track") or "").strip()[:80]
+        story_label  = str(data.get("story_label") or "").strip()[:60]
+        story_align  = "center" if data.get("story_align") == "center" else "left"
+        story_colour = "black" if data.get("story_colour") == "black" else "white"
+        story_on     = bool(data.get("use_story", False))
+        if not story_on:
+            story_artist = story_track = story_label = ""
+        use_guide    = story_on and bool(data.get("guide_export", False))
+        guide_bottom = max(60, min(900, int(_safe_float(data.get("guide_bottom"), 330))))
+        use_story    = bool(story_artist or story_track or story_label) or use_guide
+        out_name_raw = str(data.get("output_name") or "")
+        out_name_safe = "".join(c for c in out_name_raw if c not in '\\/:*?"<>|\n\r\t').strip(" .")[:100]
+
         # Audio (optional). If present, audio segment drives the duration.
         use_audio = bool(data.get("use_audio", False))
         audio_path = _socials_find_audio(session_id) if use_audio else None
@@ -1285,6 +1535,17 @@ def _run_socials_render_job(job_id: str, data: dict) -> None:
         render_out = RENDER_DIR / session_id / "SOCIALS"
         render_out.mkdir(parents=True, exist_ok=True)
 
+        story_img_path: Optional[Path] = None
+        if use_story:
+            story_img_path = render_out / "story.png"
+            try:
+                render_story_png(story_img_path, story_artist, story_track, story_label,
+                                 align=story_align, colour=story_colour,
+                                 guide=use_guide, guide_bottom=guide_bottom)
+            except Exception as e:
+                print(f"Story PNG render error: {e}", flush=True)
+                story_img_path = None
+
         # Plan outputs
         targets: List[str] = []
         if output_format in ("mp4", "both"): targets.append("mp4")
@@ -1308,6 +1569,8 @@ def _run_socials_render_job(job_id: str, data: dict) -> None:
         base_name = image_path.stem.replace("image_", "")
         if base_name.endswith("_2k"):
             base_name = base_name[:-3]
+        if out_name_safe:
+            base_name = out_name_safe
 
         for fmt in targets:
             if STOP_EVENT.is_set(): break
@@ -1335,6 +1598,11 @@ def _run_socials_render_job(job_id: str, data: dict) -> None:
                 cmd += ["-loop", "1", "-i", str(tl_img_path)]
                 tl_input_idx = 3 if audio_input_idx == 2 else 2
 
+            story_input_idx = None
+            if story_img_path is not None and story_img_path.exists():
+                cmd += ["-loop", "1", "-i", str(story_img_path)]
+                story_input_idx = 2 + (1 if audio_input_idx is not None else 0) + (1 if tl_input_idx is not None else 0)
+
             # Extend filter graph with tracklist overlay if needed
             if tl_input_idx is not None:
                 fc_final = _socials_append_tracklist(
@@ -1346,6 +1614,10 @@ def _run_socials_render_job(job_id: str, data: dict) -> None:
             else:
                 fc_final = fc
                 out_label = "outv"
+
+            if story_input_idx is not None:
+                fc_final = f"{fc_final};[{out_label}][{story_input_idx}:v]overlay=0:0[outv_story]"
+                out_label = "outv_story"
 
             cmd += ["-filter_complex", fc_final, "-map", f"[{out_label}]"]
             print(f"\n=== SOCIALS CMD ===\n{' '.join(cmd[:20])}...\n=== FC (last 400) ===\n{fc_final[-400:]}\n===", flush=True)

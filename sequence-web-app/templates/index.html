@@ -102,6 +102,18 @@
     .clip-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
     .clip-num{font-family:var(--mono);font-size:11px;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:3px 8px;color:var(--text-muted);}
     .hidden{display:none!important;}
+    @font-face{font-family:"UniversalSans850";src:url("/story_font");font-display:swap;}
+    .story-row{display:grid;grid-template-columns:44px 1fr auto;gap:8px;padding:8px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);cursor:pointer;}
+    .story-row.sel{border-color:var(--accent);}
+    .story-thumb{width:44px;height:44px;object-fit:cover;border-radius:4px;background:#111;}
+    .story-fields{display:grid;gap:4px;min-width:0;}
+    .story-fields input{padding:5px 8px;font-size:12px;}
+    .story-side{display:flex;flex-direction:column;align-items:flex-end;justify-content:space-between;}
+    .story-side .rm-btn{background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px;padding:0;line-height:1;}
+    .story-side .rm-btn:hover{color:var(--danger);}
+    .story-tone{display:flex;gap:3px;}
+    .story-tone span{padding:2px 7px;border:1px solid var(--border);border-radius:4px;font-size:10px;cursor:pointer;font-family:var(--mono);color:var(--text-muted);}
+    .story-tone span.active{border-color:var(--accent);color:var(--accent);background:var(--accent-dim);}
     .inspect-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-height:24px;}
     @keyframes spin{to{transform:rotate(360deg);}}
     .spinner{width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.7s linear infinite;flex-shrink:0;display:inline-block;vertical-align:middle;}
@@ -433,6 +445,10 @@
                 <div id="socialsPreviewTracklist" style="display:flex;flex-direction:column;gap:1px;"></div>
               </div>
             </div>
+            <!-- Release story text preview -->
+            <div id="socialsStoryPreviewTop" style="display:none;position:absolute;left:48px;width:204px;pointer-events:none;z-index:3;"></div>
+            <div id="socialsStoryPreviewBottom" style="display:none;position:absolute;left:48px;width:204px;pointer-events:none;z-index:3;"></div>
+            <div id="socialsGuidePreview" style="display:none;position:absolute;left:66.5px;width:167px;height:33px;border:1px dashed rgba(255,255,255,.9);border-radius:2px;pointer-events:none;z-index:4;align-items:center;justify-content:center;font:6px var(--mono);letter-spacing:.1em;color:rgba(255,255,255,.55);">LINK</div>
           </div>
           <svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0;overflow:hidden;">
             <defs>
@@ -448,6 +464,52 @@
         <div class="preview-meta">
           <span>1080 &times; 1920</span>
           <span class="v" id="socialsDurMeta">8s &middot; MP4</span>
+        </div>
+
+        <!-- Release Story Text -->
+        <div class="audio-track-card" id="socialsStorySection" style="margin-top:10px;">
+          <div class="card-sublabel">Release Stories</div>
+          <label class="check-row" style="margin-bottom:0;">
+            <input type="checkbox" id="socialsStoryToggle" onchange="onSocialsStoryToggle()">
+            <span class="check-box"></span>
+            <div>
+              <div class="check-label">Release story mode</div>
+              <div class="check-sub">Queue of covers &middot; artist + track above &middot; [label] below</div>
+            </div>
+          </label>
+          <div class="hidden" id="socialsStoryWrap" style="margin-top:12px;display:flex;flex-direction:column;gap:12px;">
+            <div class="hint">Covers added here are used instead of the single image on the left. Click a row to preview it.</div>
+            <div id="socialsQueueRows" style="display:flex;flex-direction:column;gap:8px;"></div>
+            <label style="display:block;text-align:center;padding:7px;background:var(--surface2);border:1px dashed var(--border);border-radius:6px;color:var(--text-muted);font-size:12px;cursor:pointer;">+ Add covers
+              <input type="file" id="socialsQueueFiles" accept=".jpg,.jpeg,.png" multiple style="display:none" onchange="socialsQueueAddFiles(this)">
+            </label>
+            <div>
+              <div class="slider-row" style="margin-bottom:8px;"><span>Align</span></div>
+              <div class="pill-group" id="socialsStoryAlign">
+                <div class="pill active" data-v="left">Left</div>
+                <div class="pill" data-v="center">Centre</div>
+              </div>
+            </div>
+            <div>
+              <div class="slider-row" style="margin-bottom:8px;"><span>Link guide</span></div>
+              <label class="check-row">
+                <input type="checkbox" id="socialsGuideShow" checked onchange="socialsGuideChanged()">
+                <span class="check-box"></span>
+                <div class="check-label">Show guide in preview</div>
+              </label>
+              <label class="check-row" style="margin-top:8px;">
+                <input type="checkbox" id="socialsGuideExport" onchange="socialsGuideChanged()">
+                <span class="check-box"></span>
+                <div>
+                  <div class="check-label">Include guide in video</div>
+                  <div class="check-sub">Dashed box to line the link sticker up with</div>
+                </div>
+              </label>
+              <div class="slider-row" style="margin-top:10px;"><span>Position from bottom</span><span class="val" id="socialsGuideBottomVal">330px</span></div>
+              <input type="range" min="120" max="700" value="330" id="socialsGuideBottom" oninput="socialsGuideChanged()">
+            </div>
+            <button class="btn btn-danger hidden" id="socialsQueueStopBtn" onclick="socialsQueueStop()">Stop queue</button>
+          </div>
         </div>
 
         <!-- Waveform Overlay — lives in the right column, below the phone preview -->
@@ -809,7 +871,7 @@ function setRunning(on){
   document.getElementById("startBtn").disabled=on;document.getElementById("stopBtn").disabled=!on;
   document.getElementById("startBtnLabel").textContent=on?"Rendering...":"Start rendering";
   const sb=document.getElementById("socialsStartBtn");
-  if(sb){sb.disabled = on || (typeof socialsState!=="undefined" && !socialsState.imageUploaded); sb.textContent = on?"Rendering...":"Start rendering";}
+  if(sb){sb.disabled = on || (typeof socialsCanStart==="function" && !socialsCanStart()); sb.textContent = on?"Rendering...":"Start rendering";}
   if(on){const s=document.getElementById("renderStatus");s.className="status-line working";s.innerHTML='<span class="spinner"></span> Rendering — this may take a few minutes...';document.getElementById("downloadList").innerHTML="";document.getElementById("renderOutput").classList.add("visible");}
 }
 function showError(msg){const s=document.getElementById("renderStatus");s.className="status-line err";s.textContent=msg;document.getElementById("renderOutput").classList.add("visible");}
@@ -1390,6 +1452,321 @@ function socialsInitTracklist(){
 }
 
 
+// ── Release story queue ──────────────────────────────────────────────────────
+const socialsStoryState = { enabled:false, align:"left", guideShow:true, guideExport:false, guideBottom:330, fontOK:false };
+let socialsQueue = [];            // {uid, file, url, w, h, artist, track, label, colour}
+let socialsQueueSel = -1;
+let _queueUid = 1;
+let socialsQueueCancel = false;
+let _socialsSingleBackup = null;
+
+function socialsCanStart(){
+  return socialsStoryState.enabled ? socialsQueue.length > 0 : !!socialsState.imageUploaded;
+}
+
+function onSocialsStoryToggle(){
+  const on = document.getElementById("socialsStoryToggle").checked;
+  socialsStoryState.enabled = on;
+  document.getElementById("socialsStoryWrap").classList.toggle("hidden", !on);
+  if(on){
+    if(socialsQueue.length) socialsQueueSelect(socialsQueueSel >= 0 ? socialsQueueSel : 0);
+  } else {
+    socialsRestoreSingleImage();
+  }
+  socialsRenderStoryPreview();
+  updateSocialsStartBtn();
+}
+
+function socialsQueueShow(item){
+  if(!_socialsSingleBackup && socialsState.imageUploaded){
+    _socialsSingleBackup = {url: socialsState.imageDataUrl, w: socialsState.imageW, h: socialsState.imageH};
+  }
+  socialsState.imageDataUrl = item.url;
+  socialsState.imageW = item.w || 0;
+  socialsState.imageH = item.h || 0;
+  document.getElementById("socialsBgLayer").style.backgroundImage = `url(${item.url})`;
+  document.getElementById("socialsFgSquare").style.backgroundImage = `url(${item.url})`;
+  document.getElementById("socialsPhoneFrame").classList.remove("empty");
+  applySocialsAnimation();
+}
+
+function socialsRestoreSingleImage(){
+  if(socialsState.imageUploaded && _socialsSingleBackup){
+    const b = _socialsSingleBackup;
+    socialsState.imageDataUrl = b.url; socialsState.imageW = b.w; socialsState.imageH = b.h;
+    document.getElementById("socialsBgLayer").style.backgroundImage = `url(${b.url})`;
+    document.getElementById("socialsFgSquare").style.backgroundImage = `url(${b.url})`;
+    applySocialsAnimation();
+  } else if(!socialsState.imageUploaded){
+    clearSocialsImage();
+  }
+  _socialsSingleBackup = null;
+}
+
+function socialsQueueAddFiles(input){
+  const files = [...input.files].filter(f => /\.(jpe?g|png)$/i.test(f.name));
+  let lastLabel = socialsQueue.length ? socialsQueue[socialsQueue.length-1].label : "";
+  if(!lastLabel){ try{ lastLabel = localStorage.getItem("socialsStoryLabel") || ""; }catch(e){} }
+  const firstNew = socialsQueue.length;
+  files.forEach(f => {
+    const it = {uid:_queueUid++, file:f, url:URL.createObjectURL(f), w:0, h:0, artist:"", track:"", label:lastLabel, colour:"white"};
+    const img = new Image();
+    img.onload = () => { it.w = img.naturalWidth; it.h = img.naturalHeight; if(socialsQueue[socialsQueueSel] === it) socialsQueueShow(it); };
+    img.src = it.url;
+    socialsQueue.push(it);
+  });
+  input.value = "";
+  socialsQueueRenderRows();
+  if(files.length) socialsQueueSelect(firstNew);
+  updateSocialsStartBtn();
+}
+
+function socialsQueueRenderRows(){
+  const host = document.getElementById("socialsQueueRows");
+  host.innerHTML = "";
+  socialsQueue.forEach((it, idx) => {
+    const row = document.createElement("div");
+    row.className = "story-row" + (idx === socialsQueueSel ? " sel" : "");
+    row.innerHTML = '<img class="story-thumb" alt="">'
+      + '<div class="story-fields"><input type="text" class="sa" maxlength="80" placeholder="Artist">'
+      + '<input type="text" class="st" maxlength="80" placeholder="Track">'
+      + '<input type="text" class="sl" maxlength="60" placeholder="Label"></div>'
+      + '<div class="story-side"><button class="rm-btn" title="Remove">&times;</button>'
+      + '<div class="story-tone"><span data-v="white">W</span><span data-v="black">B</span></div></div>';
+    row.querySelector("img").src = it.url;
+    const sa = row.querySelector(".sa"), st = row.querySelector(".st"), sl = row.querySelector(".sl");
+    sa.value = it.artist; st.value = it.track; sl.value = it.label;
+    const sync = () => {
+      it.artist = sa.value.trim(); it.track = st.value.trim(); it.label = sl.value.trim();
+      if(it.label){ try{ localStorage.setItem("socialsStoryLabel", it.label); }catch(e){} }
+      socialsRenderStoryPreview();
+    };
+    [sa, st, sl].forEach(inp => {
+      inp.addEventListener("input", sync);
+      inp.addEventListener("focus", () => { const i = socialsQueue.indexOf(it); if(i !== socialsQueueSel) socialsQueueSelect(i); });
+    });
+    row.addEventListener("click", e => {
+      if(e.target.closest("input,button,.story-tone")) return;
+      socialsQueueSelect(socialsQueue.indexOf(it));
+    });
+    row.querySelectorAll(".story-tone span").forEach(sp => {
+      sp.classList.toggle("active", sp.dataset.v === it.colour);
+      sp.addEventListener("click", () => {
+        it.colour = sp.dataset.v;
+        row.querySelectorAll(".story-tone span").forEach(x => x.classList.toggle("active", x === sp));
+        socialsQueueSelect(socialsQueue.indexOf(it));
+      });
+    });
+    row.querySelector(".rm-btn").addEventListener("click", e => {
+      e.stopPropagation();
+      const i = socialsQueue.indexOf(it);
+      socialsQueue.splice(i, 1);
+      try{ URL.revokeObjectURL(it.url); }catch(_){}
+      if(!socialsQueue.length){ socialsQueueSel = -1; socialsRestoreSingleImage(); }
+      else { socialsQueueSel = Math.min(i, socialsQueue.length - 1); }
+      socialsQueueRenderRows();
+      if(socialsQueue.length) socialsQueueSelect(socialsQueueSel);
+      socialsRenderStoryPreview();
+      updateSocialsStartBtn();
+    });
+    host.appendChild(row);
+  });
+}
+
+function socialsQueueSelect(idx){
+  if(idx < 0 || idx >= socialsQueue.length) return;
+  socialsQueueSel = idx;
+  [...document.querySelectorAll("#socialsQueueRows .story-row")].forEach((r, i) => r.classList.toggle("sel", i === idx));
+  if(socialsStoryState.enabled) socialsQueueShow(socialsQueue[idx]);
+  socialsRenderStoryPreview();
+}
+
+// ── Link guide ───────────────────────────────────────────────────────────────
+function socialsGuideChanged(){
+  const st = socialsStoryState;
+  st.guideShow   = document.getElementById("socialsGuideShow").checked;
+  st.guideExport = document.getElementById("socialsGuideExport").checked;
+  st.guideBottom = parseInt(document.getElementById("socialsGuideBottom").value) || 330;
+  document.getElementById("socialsGuideBottomVal").textContent = st.guideBottom + "px";
+  try{ localStorage.setItem("socialsGuideBottom", String(st.guideBottom)); }catch(e){}
+  socialsRenderStoryPreview();
+}
+
+// ── Preview (text + guide) ───────────────────────────────────────────────────
+function _storyLine(text, startPx, minPx, bold){
+  const el = document.createElement("div");
+  const fam = (socialsStoryState.fontOK ? '"UniversalSans850",' : '') + 'Helvetica,Arial,sans-serif';
+  const weight = socialsStoryState.fontOK ? "400" : (bold ? "700" : "400");   // 850 weight is in the font file itself
+  el.style.cssText = "display:inline-block;white-space:nowrap;line-height:1.2;text-shadow:0 0 5px rgba(0,0,0,.6);"
+    + "font-family:" + fam + ";font-weight:" + weight + ";font-size:" + startPx + "px;";
+  el.textContent = text;
+  return {el, startPx, minPx};
+}
+
+function _storyFit(lines, host){
+  // Mirrors the export: shrink each line until it fits the cover width (204px in the preview)
+  lines.forEach(l => {
+    host.appendChild(l.el);
+    let size = l.startPx;
+    while(l.el.scrollWidth > 204 && size > l.minPx){ size -= 0.5; l.el.style.fontSize = size + "px"; }
+  });
+}
+
+function socialsRenderStoryPreview(){
+  const top = document.getElementById("socialsStoryPreviewTop");
+  const bot = document.getElementById("socialsStoryPreviewBottom");
+  const guide = document.getElementById("socialsGuidePreview");
+  if(!top || !bot) return;
+  const st = socialsStoryState;
+  const it = (st.enabled && socialsQueueSel >= 0) ? socialsQueue[socialsQueueSel] : null;
+  const k = 300/1080;                       // preview scale (frame is 300px wide)
+  const colour = (it && it.colour === "black") ? "#0f0f0f" : "#f5f5f5";
+
+  if(guide){
+    guide.style.display = (st.enabled && st.guideShow) ? "flex" : "none";
+    guide.style.bottom = Math.round(st.guideBottom * k) + "px";
+    guide.style.borderColor = colour;
+    guide.style.color = colour;
+  }
+
+  const hasText = !!(it && (it.artist || it.track || it.label));
+  top.style.display = bot.style.display = hasText ? "block" : "none";
+  if(!hasText) return;
+
+  [top, bot].forEach(h => { h.innerHTML = ""; h.style.color = colour; h.style.textAlign = st.align === "center" ? "center" : "left"; });
+  top.style.bottom = Math.round((534 - 165) + 44*k) + "px";   // 44px above the cover (cover top = 165px)
+  bot.style.top    = Math.round(369 + 40*k) + "px";           // 40px below the cover
+
+  const topLines = [];
+  if(it.artist) topLines.push(_storyLine(it.artist, 58*k, 30*k, true));
+  if(it.track)  topLines.push(_storyLine(it.track,  58*k, 30*k, false));
+  _storyFit(topLines, top);
+  topLines.forEach((l, i) => { l.el.style.display = "block"; if(i < topLines.length-1) l.el.style.marginBottom = Math.round(12*k) + "px"; });
+
+  const lab = it.label.replace(/^\[+|\]+$/g, "").trim();
+  if(lab){ const l = _storyLine("[" + lab + "]", 32*k, 20*k, false); _storyFit([l], bot); }
+}
+
+function socialsInitStory(){
+  socialsSetupPills("socialsStoryAlign", v => { socialsStoryState.align = v; socialsRenderStoryPreview(); });
+  try{
+    const g = parseInt(localStorage.getItem("socialsGuideBottom"));
+    if(g >= 120 && g <= 700){
+      socialsStoryState.guideBottom = g;
+      document.getElementById("socialsGuideBottom").value = g;
+      document.getElementById("socialsGuideBottomVal").textContent = g + "px";
+    }
+  }catch(e){}
+  // Use Universal Sans 850 in the preview if the font file has been added to /fonts
+  fetch("/story_font", {method:"HEAD"}).then(r => {
+    if(!r.ok) return;
+    socialsStoryState.fontOK = true;
+    return document.fonts.load('16px "UniversalSans850"').then(() => socialsRenderStoryPreview());
+  }).catch(() => {});
+}
+
+// ── Queue rendering (one cover at a time: upload → render → next) ────────────
+function socialsQueueStatus(text){
+  const s = document.getElementById("renderStatus");
+  s.className = "status-line working";
+  s.innerHTML = '<span class="spinner"></span> ';
+  s.appendChild(document.createTextNode(text));
+}
+
+function socialsQueueListDownloads(downloads){
+  const list = document.getElementById("downloadList");
+  list.innerHTML = "";
+  downloads.forEach(d => {
+    const item = document.createElement("div"); item.className = "download-item";
+    const n = document.createElement("span"); n.className = "dl-name"; n.textContent = d.filename;
+    const a = document.createElement("a"); a.className = "btn btn-download btn-sm"; a.href = d.url;
+    a.setAttribute("download", d.filename); a.textContent = "↓ Download";
+    item.append(n, a); list.appendChild(item);
+  });
+}
+
+async function socialsWaitForJob(jobId){
+  while(true){
+    if(socialsQueueCancel) return {status:"error", error:"Stopped"};
+    await new Promise(r => setTimeout(r, 1000));
+    try{
+      const r = await fetch("/render_progress/" + jobId);
+      if(!r.ok) continue;
+      const job = await r.json();
+      if(job.status === "done" || job.status === "error") return job;
+    }catch(e){ /* keep polling */ }
+  }
+}
+
+async function socialsQueueStop(){
+  socialsQueueCancel = true;
+  try{ await fetch("/stop", {method:"POST"}); }catch(e){}
+  const s = document.getElementById("renderStatus"); s.className = "status-line"; s.textContent = "Stopping...";
+}
+
+async function startSocialsQueueRender(){
+  const items = socialsQueue.slice();
+  if(!items.length){ showError("Add at least one cover to the queue."); return; }
+  socialsQueueCancel = false;
+  document.getElementById("videoProgressList").innerHTML = "";
+  document.getElementById("videoProgressList").classList.add("hidden");
+  document.getElementById("overallProgress").classList.add("hidden");
+  setRunning(true);
+  document.getElementById("socialsQueueStopBtn").classList.remove("hidden");
+
+  const downloads = [], failed = [];
+  let ok = 0;
+  for(let i = 0; i < items.length; i++){
+    if(socialsQueueCancel) break;
+    const it = items[i];
+    const title = [it.artist, it.track].filter(Boolean).join(" - ") || it.file.name.replace(/\.[^.]+$/, "");
+    socialsQueueStatus(`Rendering ${i+1} of ${items.length} — ${title}`);
+    try{
+      const fd = new FormData();
+      fd.append("session_id", SESSION_ID);
+      fd.append("image", it.file);
+      const ur = await fetch("/upload_socials_image", {method:"POST", body:fd});
+      const ut = await ur.text();
+      if(!ur.ok) throw new Error(ut);
+
+      const payload = socialsBuildPayload();
+      Object.assign(payload, {
+        use_story: true,
+        story_artist: it.artist, story_track: it.track, story_label: it.label,
+        story_align: socialsStoryState.align, story_colour: it.colour,
+        guide_export: socialsStoryState.guideExport, guide_bottom: socialsStoryState.guideBottom,
+        output_name: title,
+      });
+      const r = await fetch("/render_socials", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload)});
+      const txt = await r.text();
+      if(!r.ok) throw new Error(txt);
+      const job = await socialsWaitForJob(JSON.parse(txt).job_id);
+      if(socialsQueueCancel) break;
+      if(job.status !== "done"){
+        throw new Error(job.error || (job.videos || []).map(v => v.error).filter(Boolean).join(" ") || "Render failed");
+      }
+      (job.videos || []).filter(v => v.url).forEach(v => downloads.push({filename: v.name || v.label || "video", url: v.url}));
+      socialsQueueListDownloads(downloads);
+      ok++;
+    }catch(e){
+      failed.push(title + ": " + String(e.message || e).slice(0, 160));
+    }
+  }
+
+  setRunning(false);
+  document.getElementById("socialsQueueStopBtn").classList.add("hidden");
+  const s = document.getElementById("renderStatus");
+  if(socialsQueueCancel){
+    s.className = "status-line"; s.textContent = `Stopped — ${ok} of ${items.length} finished.`;
+  } else if(failed.length){
+    s.className = ok ? "status-line ok" : "status-line err";
+    s.textContent = `${ok} of ${items.length} done. Failed: ` + failed.join(" | ");
+  } else {
+    s.className = "status-line ok"; s.textContent = `✓ Done — ${ok} video${ok === 1 ? "" : "s"} ready.`;
+  }
+}
+
+
 let socials_ws=null, socials_regions=null, socials_region=null, socials_duration=0, socials_playing=false, socials_playTimer=null, socials_startInputDirty=false;
 
 async function onSocialsImageSelected(){
@@ -1466,7 +1843,7 @@ function clearSocialsImage(){
 }
 
 function updateSocialsStartBtn(){
-  document.getElementById("socialsStartBtn").disabled = !socialsState.imageUploaded;
+  document.getElementById("socialsStartBtn").disabled = !socialsCanStart();
 }
 
 // Frame dimensions in preview units (must match the .phone-frame CSS — 240x427).
@@ -1672,6 +2049,7 @@ function socialsSetupPills(groupId, onChange){
 window.addEventListener("load", () => {
   socialsInitOverlays();
   socialsInitTracklist();
+  socialsInitStory();
 
   socialsSetupPills("socialsBgTreatment", v => {
     socialsState.bgTreatment = v;
@@ -1783,7 +2161,50 @@ function applySolidColourBg(){
   applySocialsOverlayPreview();
 }
 
+function socialsBuildPayload(){
+  const useAudio = !!socialsState.audioFile && !!socialsState.audioServerName;
+  let segStart = 0, segLen = 8;
+  if(useAudio){
+    const sec = mmssToSecs(document.getElementById("socialsSegStart").value || "00:00");
+    segStart = sec === null ? 0 : sec;
+    segLen   = socials_getSegLen();
+  } else {
+    segLen = parseFloat(document.getElementById("socialsDuration")?.value) || socialsState.duration || 8;
+  }
+
+  const resolvedAnim = (socialsState.animation === "pan")
+    ? (socialsState.panShape || "horizontal")
+    : socialsState.animation;
+
+  return {
+    session_id:         SESSION_ID,
+    bg_treatment:       socialsState.bgTreatment === "solid" ? "normal" : socialsState.bgTreatment,
+    solid_colour:       socialsState.bgTreatment === "solid" ? socialsState.solidColour : null,
+    animation:          resolvedAnim,
+    strobe_opacity:     socialsState.strobeOpacity,
+    strobe_zoom:        socialsState.strobeZoom,
+    strobe_offset_x:    socialsState.strobeOffsetX,
+    strobe_offset_y:    socialsState.strobeOffsetY,
+    pan_duration:       socialsState.panDuration,
+    duration:           socialsState.duration,
+    output_format:      socialsState.outputFormat,
+    use_audio:          useAudio,
+    segment_start_sec:  segStart,
+    segment_length_sec: segLen,
+    overlays:           socialsOverlaysToPayload(),
+    use_tracklist:      socialsTracklistState.enabled && useAudio,
+    tl_colour:          socialsTracklistState.colour,
+    tl_bottom:          socialsTracklistState.bottom,
+    tl_font_size:       29,
+    tl_bar_h:           18,
+    tl_line_h:          36,
+    tl_tracks:          socialsTracklistState.tracks,
+    tl_playing_idx:     socialsTracklistState.playingIdx,
+  };
+}
+
 async function startSocialsRender(){
+  if(socialsStoryState.enabled){ return startSocialsQueueRender(); }
   if(!socialsState.imageUploaded){ showError("Please upload an image first."); return; }
   document.getElementById("renderStatus").className = "status-line";
   document.getElementById("downloadList").innerHTML = "";
@@ -1793,50 +2214,10 @@ async function startSocialsRender(){
   setRunning(true);
 
   try{
-    const useAudio = !!socialsState.audioFile && !!socialsState.audioServerName;
-    let segStart = 0, segLen = 8;
-    if(useAudio){
-      const sec = mmssToSecs(document.getElementById("socialsSegStart").value || "00:00");
-      segStart = sec === null ? 0 : sec;
-      segLen   = socials_getSegLen();
-    } else {
-      segLen = parseFloat(document.getElementById("socialsDuration")?.value) || socialsState.duration || 8;
-    }
-
-    const resolvedAnim = (socialsState.animation === "pan")
-      ? (socialsState.panShape || "horizontal")
-      : socialsState.animation;
-
-    const payload = {
-      session_id:         SESSION_ID,
-      bg_treatment:       socialsState.bgTreatment === "solid" ? "normal" : socialsState.bgTreatment,
-      solid_colour:       socialsState.bgTreatment === "solid" ? socialsState.solidColour : null,
-      animation:          resolvedAnim,
-      strobe_opacity:     socialsState.strobeOpacity,
-      strobe_zoom:        socialsState.strobeZoom,
-      strobe_offset_x:    socialsState.strobeOffsetX,
-      strobe_offset_y:    socialsState.strobeOffsetY,
-      pan_duration:       socialsState.panDuration,
-      duration:           socialsState.duration,
-      output_format:      socialsState.outputFormat,
-      use_audio:          useAudio,
-      segment_start_sec:  segStart,
-      segment_length_sec: segLen,
-      overlays:           socialsOverlaysToPayload(),
-      use_tracklist:      socialsTracklistState.enabled && useAudio,
-      tl_colour:          socialsTracklistState.colour,
-      tl_bottom:          socialsTracklistState.bottom,
-      tl_font_size:       29,
-      tl_bar_h:           18,
-      tl_line_h:          36,
-      tl_tracks:          socialsTracklistState.tracks,
-      tl_playing_idx:     socialsTracklistState.playingIdx,
-    };
-
     const r = await fetch("/render_socials", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify(payload),
+      body: JSON.stringify(socialsBuildPayload()),
     });
     const txt = await r.text();
     if(!r.ok) throw new Error(txt);
