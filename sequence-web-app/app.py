@@ -1339,10 +1339,13 @@ def _story_fit(text: str, bold: bool, start: int, min_size: int, max_w: int):
     return f, t.rstrip() + "…"
 
 
-GUIDE_W, GUIDE_H = 600, 120   # link-sticker sized box, centred
+# Fixed link guide: sized for a link sticker whose text is a single emoji, centred, always at
+# the same height so every story lines up the same way.
+GUIDE_W, GUIDE_H = 200, 72
+GUIDE_BOTTOM = 330          # gap from the bottom of the frame to the bottom of the box
 
 
-def _story_dashed_rect(draw, box, fill, width: int = 3, dash: int = 18, gap: int = 12) -> None:
+def _story_dashed_rect(draw, box, fill, width: int = 3, dash: int = 14, gap: int = 9) -> None:
     x0, y0, x1, y1 = box
     def hline(y, xa, xb):
         x = xa
@@ -1365,7 +1368,7 @@ def render_story_png(
     align: str = "left",
     colour: str = "white",
     guide: bool = False,
-    guide_bottom: int = 330,
+    guide_bottom: int = GUIDE_BOTTOM,
 ) -> Path:
     """
     Transparent 1080x1920 overlay: artist + track above the cover, "[label]" in
@@ -1444,7 +1447,7 @@ def _run_socials_render_job(job_id: str, data: dict) -> None:
         strobe_off_x = max(-1.0, min(1.0, _safe_float(data.get("strobe_offset_x"), 0.0)))
         strobe_off_y = max(-1.0, min(1.0, _safe_float(data.get("strobe_offset_y"), 0.0)))
         output_format = (data.get("output_format") or "mp4").strip().lower()
-        if output_format not in ("mp4", "gif", "both"):
+        if output_format not in ("mp4", "gif", "both", "jpeg"):
             output_format = "mp4"
 
         # Parse overlays list from payload
@@ -1492,7 +1495,6 @@ def _run_socials_render_job(job_id: str, data: dict) -> None:
         if not story_on:
             story_artist = story_track = story_label = ""
         use_guide    = story_on and bool(data.get("guide_export", False))
-        guide_bottom = max(60, min(900, int(_safe_float(data.get("guide_bottom"), 330))))
         use_story    = bool(story_artist or story_track or story_label) or use_guide
         out_name_raw = str(data.get("output_name") or "")
         out_name_safe = "".join(c for c in out_name_raw if c not in '\\/:*?"<>|\n\r\t').strip(" .")[:100]
@@ -1541,7 +1543,7 @@ def _run_socials_render_job(job_id: str, data: dict) -> None:
             try:
                 render_story_png(story_img_path, story_artist, story_track, story_label,
                                  align=story_align, colour=story_colour,
-                                 guide=use_guide, guide_bottom=guide_bottom)
+                                 guide=use_guide)
             except Exception as e:
                 print(f"Story PNG render error: {e}", flush=True)
                 story_img_path = None
@@ -1550,6 +1552,7 @@ def _run_socials_render_job(job_id: str, data: dict) -> None:
         targets: List[str] = []
         if output_format in ("mp4", "both"): targets.append("mp4")
         if output_format in ("gif", "both"): targets.append("gif")
+        if output_format == "jpeg": targets.append("jpeg")
 
         job["total"] = len(targets)
         job["videos"] = []
@@ -1566,6 +1569,18 @@ def _run_socials_render_job(job_id: str, data: dict) -> None:
             solid_colour=solid_colour,
         )
 
+        # JPEG = a still of the finished design: same look, no animation
+        fc_still = None
+        if "jpeg" in targets:
+            fc_still = _socials_build_filter(
+                bg_treatment, "none", strobe_op, pan_dur, duration,
+                strobe_zoom=strobe_zoom,
+                strobe_offset_x=strobe_off_x,
+                strobe_offset_y=strobe_off_y,
+                overlays=overlays,
+                solid_colour=solid_colour,
+            )
+
         base_name = image_path.stem.replace("image_", "")
         if base_name.endswith("_2k"):
             base_name = base_name[:-3]
@@ -1574,7 +1589,9 @@ def _run_socials_render_job(job_id: str, data: dict) -> None:
 
         for fmt in targets:
             if STOP_EVENT.is_set(): break
-            out_name = f"{base_name}_socials.{fmt}"
+            ext = "jpg" if fmt == "jpeg" else fmt
+            fc_use = fc_still if (fmt == "jpeg" and fc_still) else fc
+            out_name = f"{base_name}_socials.{ext}"
             out_path = _next_available(render_out / out_name)
             job["videos"].append({"name": out_path.name, "status": "rendering", "url": None})
             _write_job(job_id, job)
@@ -1606,13 +1623,13 @@ def _run_socials_render_job(job_id: str, data: dict) -> None:
             # Extend filter graph with tracklist overlay if needed
             if tl_input_idx is not None:
                 fc_final = _socials_append_tracklist(
-                    fc, tl_input_idx, "outv", "outv_tl",
+                    fc_use, tl_input_idx, "outv", "outv_tl",
                     seg_len=seg_len, bottom_offset=tl_bottom, bar_h=tl_bar_h,
                     light_rgb=tl_light_rgb,
                 )
                 out_label = "outv_tl"
             else:
-                fc_final = fc
+                fc_final = fc_use
                 out_label = "outv"
 
             if story_input_idx is not None:
@@ -1633,6 +1650,8 @@ def _run_socials_render_job(job_id: str, data: dict) -> None:
                     "-movflags", "+faststart",
                     str(out_path),
                 ]
+            elif fmt == "jpeg":
+                cmd += ["-frames:v", "1", "-q:v", "2", "-pix_fmt", "yuvj420p", "-update", "1", str(out_path)]
             else:  # gif — no audio
                 cmd += [
                     "-t", f"{duration}",

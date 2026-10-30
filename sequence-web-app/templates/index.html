@@ -417,6 +417,7 @@
             <div class="pill active" data-v="mp4">MP4</div>
             <div class="pill" data-v="gif">GIF</div>
             <div class="pill" data-v="both">Both</div>
+            <div class="pill" data-v="jpeg">JPEG</div>
           </div>
         </div>
       </div>
@@ -490,25 +491,15 @@
                 <div class="pill" data-v="center">Centre</div>
               </div>
             </div>
-            <div>
-              <div class="slider-row" style="margin-bottom:8px;"><span>Link guide</span></div>
-              <label class="check-row">
-                <input type="checkbox" id="socialsGuideShow" checked onchange="socialsGuideChanged()">
-                <span class="check-box"></span>
-                <div class="check-label">Show guide in preview</div>
-              </label>
-              <label class="check-row" style="margin-top:8px;">
-                <input type="checkbox" id="socialsGuideExport" onchange="socialsGuideChanged()">
-                <span class="check-box"></span>
-                <div>
-                  <div class="check-label">Include guide in video</div>
-                  <div class="check-sub">Dashed box to line the link sticker up with</div>
-                </div>
-              </label>
-              <div class="slider-row" style="margin-top:10px;"><span>Position from bottom</span><span class="val" id="socialsGuideBottomVal">330px</span></div>
-              <input type="range" min="120" max="700" value="330" id="socialsGuideBottom" oninput="socialsGuideChanged()">
-            </div>
-            <button class="btn btn-danger hidden" id="socialsQueueStopBtn" onclick="socialsQueueStop()">Stop queue</button>
+            <label class="check-row">
+              <input type="checkbox" id="socialsGuideOn" checked onchange="socialsGuideChanged()">
+              <span class="check-box"></span>
+              <div>
+                <div class="check-label">Link guide</div>
+                <div class="check-sub">Dashed box for the link sticker &middot; fixed position &middot; in preview and export</div>
+              </div>
+            </label>
+                        <button class="btn btn-danger hidden" id="socialsQueueStopBtn" onclick="socialsQueueStop()">Stop queue</button>
           </div>
         </div>
 
@@ -1453,7 +1444,8 @@ function socialsInitTracklist(){
 
 
 // ── Release story queue ──────────────────────────────────────────────────────
-const socialsStoryState = { enabled:false, align:"left", guideShow:true, guideExport:false, guideBottom:330, fontOK:false };
+const socialsStoryState = { enabled:false, align:"left", guideOn:true, fontOK:false };
+const SOCIALS_GUIDE = { w:200, h:72, bottom:330 };   // export px - must match GUIDE_W / GUIDE_H / GUIDE_BOTTOM in app.py
 let socialsQueue = [];            // {uid, file, url, w, h, artist, track, label, colour}
 let socialsQueueSel = -1;
 let _queueUid = 1;
@@ -1583,12 +1575,7 @@ function socialsQueueSelect(idx){
 
 // ── Link guide ───────────────────────────────────────────────────────────────
 function socialsGuideChanged(){
-  const st = socialsStoryState;
-  st.guideShow   = document.getElementById("socialsGuideShow").checked;
-  st.guideExport = document.getElementById("socialsGuideExport").checked;
-  st.guideBottom = parseInt(document.getElementById("socialsGuideBottom").value) || 330;
-  document.getElementById("socialsGuideBottomVal").textContent = st.guideBottom + "px";
-  try{ localStorage.setItem("socialsGuideBottom", String(st.guideBottom)); }catch(e){}
+  socialsStoryState.guideOn = document.getElementById("socialsGuideOn").checked;
   socialsRenderStoryPreview();
 }
 
@@ -1623,8 +1610,12 @@ function socialsRenderStoryPreview(){
   const colour = (it && it.colour === "black") ? "#0f0f0f" : "#f5f5f5";
 
   if(guide){
-    guide.style.display = (st.enabled && st.guideShow) ? "flex" : "none";
-    guide.style.bottom = Math.round(st.guideBottom * k) + "px";
+    const g = SOCIALS_GUIDE;
+    guide.style.display = (st.enabled && st.guideOn) ? "flex" : "none";
+    guide.style.width  = (g.w * k) + "px";
+    guide.style.height = (g.h * k) + "px";
+    guide.style.left   = ((300 - g.w * k) / 2) + "px";
+    guide.style.bottom = (g.bottom * k) + "px";
     guide.style.borderColor = colour;
     guide.style.color = colour;
   }
@@ -1649,14 +1640,6 @@ function socialsRenderStoryPreview(){
 
 function socialsInitStory(){
   socialsSetupPills("socialsStoryAlign", v => { socialsStoryState.align = v; socialsRenderStoryPreview(); });
-  try{
-    const g = parseInt(localStorage.getItem("socialsGuideBottom"));
-    if(g >= 120 && g <= 700){
-      socialsStoryState.guideBottom = g;
-      document.getElementById("socialsGuideBottom").value = g;
-      document.getElementById("socialsGuideBottomVal").textContent = g + "px";
-    }
-  }catch(e){}
   // Use Universal Sans 850 in the preview if the font file has been added to /fonts
   fetch("/story_font", {method:"HEAD"}).then(r => {
     if(!r.ok) return;
@@ -1734,7 +1717,7 @@ async function startSocialsQueueRender(){
         use_story: true,
         story_artist: it.artist, story_track: it.track, story_label: it.label,
         story_align: socialsStoryState.align, story_colour: it.colour,
-        guide_export: socialsStoryState.guideExport, guide_bottom: socialsStoryState.guideBottom,
+        guide_export: socialsStoryState.guideOn,
         output_name: title,
       });
       const r = await fetch("/render_socials", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(payload)});
@@ -2099,7 +2082,7 @@ window.addEventListener("load", () => {
 
   socialsSetupPills("socialsOutputFormat", v => {
     socialsState.outputFormat = v;
-    const label = v==="both" ? "MP4+GIF" : v.toUpperCase();
+    const label = v==="both" ? "MP4+GIF" : v==="jpeg" ? "JPEG still" : v.toUpperCase();
     document.getElementById("socialsDurMeta").textContent = socialsState.duration + "s · " + label;
   });
 
@@ -2137,7 +2120,7 @@ window.addEventListener("load", () => {
     socialsState.duration = parseInt(e.target.value);
     document.getElementById("socialsDurVal").textContent = e.target.value + "s";
     const fmt = socialsState.outputFormat;
-    const label = fmt==="both" ? "MP4+GIF" : fmt.toUpperCase();
+    const label = fmt==="both" ? "MP4+GIF" : fmt==="jpeg" ? "JPEG still" : fmt.toUpperCase();
     document.getElementById("socialsDurMeta").textContent = e.target.value + "s · " + label;
   });
 });
